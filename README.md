@@ -103,6 +103,27 @@ Every memory mutation has a snapshot + provenance chain
 
 ---
 
+## 🧠 Memoria in Hermes
+
+Memoria is available from the Hermes plugin catalog. Log in at
+[Memoria](https://thememoria.ai) and create/copy a memory-service API key, then run:
+
+```bash
+hermes plugins install memoria --yes-deps --enable
+hermes memory setup
+hermes memory status
+```
+
+In the interactive setup, select **memoria**, paste your API key at the masked
+prompt, and choose whether to enable automatic capture (off by default). Confirm
+that status reports `memoria`, installed and `available`, then exit any existing
+conversation and start a new one with `hermes`. Status checks local readiness;
+verify a live write using the [complete Hermes guide](plugins/hermes/README.md).
+The free Memoria Cloud requires no local Memoria server or database. Self-hosting,
+fixed GitHub installation and named profiles are covered in the same guide.
+
+---
+
 ## 🧩 Memoria in Astra
 
 In [Astra](https://github.com/matrixorigin/Astra), Memoria stores and retrieves facts, preferences, decisions, and session summaries so agents can reuse knowledge across conversations. Memory changes can be reviewed and rolled back.

@@ -4,9 +4,10 @@ Native Hermes memory provider, using the free Memoria Cloud by default. Users do
 need to deploy a database, embedding model, extraction model or local Memoria server.
 Self-hosted users can change the API origin in the same plugin.
 
-**Development preview, version 0.1.1.** Source is published on GitHub and can be
-installed directly. The [Hermes catalog submission](https://github.com/NousResearch/hermes-agent/pull/135490)
-is awaiting review; installation by name becomes available after catalog acceptance.
+**Development preview, version 0.1.1.** Memoria is available in the
+[Hermes plugin catalog](https://github.com/NousResearch/hermes-agent/pull/135490).
+Install it by name with `hermes plugins install memoria`; the catalog supplies
+the reviewed commit. GitHub and local-checkout installation remain available.
 See [CLOUD_ACCEPTANCE.md](CLOUD_ACCEPTANCE.md) for the recorded Cloud API acceptance
 scope and results. Self-hosted APIs must include the matching deduplicated-capture
 route before using automatic capture with explicit-write exclusions.
@@ -15,14 +16,17 @@ route before using automatic capture with explicit-write exclusions.
 
 Requires Hermes ≥ 0.21.5 and its Python ≥ 3.11. The tested Hermes checkout is
 `0240fa4a84123406a0e5e6e7262e5b772b43f0bd` (0.21.5, September 2026).
+Catalog installation and the interactive API-key/capture wizard were also
+verified on Hermes `79b45d1647f6` (0.21.6, October 11, 2026) in a fresh isolated
+home. That setup check used a placeholder key and made no live Cloud request.
 Hermes releases sharing a version number may have different plugin APIs; run
 `hermes plugins validate` on the actual target installation.
 
-Choose one of the following installation methods. The GitHub guide below includes
-configuration and a first conversation; the other methods use the shared
+Choose one of the following installation methods. The catalog guide below includes
+configuration and a first conversation; local development uses the shared
 [setup steps](#configure-memoria).
 
-### 1. Install from GitHub
+### 1. Install from the Hermes catalog (recommended)
 
 These steps use the default Hermes profile. For an existing named profile, add
 `-p <profile-name>` to **every** Hermes command below.
@@ -34,17 +38,16 @@ Keep it ready for the setup prompt; the website login session token is not the A
 
 **Step 2: Install the plugin.**
 
-Install the commit verified in the October 9, 2026 local CLI acceptance:
+Install the reviewed catalog version:
 
 ```sh
-hermes plugins install 'https://github.com/matrixorigin/memoria#plugins/hermes' \
-  --ref 3a5c5065b2820d56dd3d8ac8bb259a9424b1476e \
-  --yes-deps --enable
+hermes plugins install memoria --yes-deps --enable
 ```
 
-The `#plugins/hermes` suffix selects the plugin directory inside the Memoria
-repository. `--yes-deps` authorizes preparation of its declared Python dependencies;
+`--yes-deps` authorizes preparation of the plugin's declared Python dependencies;
 `--enable` selects Memoria as the memory provider.
+If Memoria is missing from an older catalog, update Hermes or use the GitHub
+installation below.
 
 **Step 3: Configure the API key and automatic capture.**
 
@@ -60,7 +63,9 @@ Enter to keep it or paste a replacement.
 
 At the automatic capture prompt, enter `true` to upload completed user/assistant
 turns for background fact extraction, or `false` to use recall and explicit
-memory tools without automatic uploads. Tool results are excluded from capture.
+memory tools without automatic uploads. Capture is disabled by default and
+excludes tool results and media. With capture enabled, chat normally; you do not
+need to name a memory tool on each turn.
 
 Use `hermes memory setup` for this step. In the tested Hermes CLI,
 `hermes memory setup memoria` only activates the provider and does not prompt for
@@ -87,28 +92,53 @@ hermes
 Hermes also needs a configured chat-model provider and its credentials. The
 Memoria API key authenticates memory operations only.
 
-To check a real memory write, say: "Remember that I prefer unsweetened coffee."
+For a one-time write check, say: "Use `memoria_store` to remember that I prefer
+unsweetened coffee."
 Confirm that `memoria_store` succeeds, then exit and start another conversation
 with `hermes`. Ask: "How do I like my coffee?" Check that the answer recalls the
-saved preference. You can then ask Hermes to forget that test preference.
+saved preference. You can then ask Hermes to delete the test preference with
+`memoria_forget`. Hermes's built-in `memory` tool writes local `MEMORY.md`/`USER.md`;
+this plugin does not mirror those writes to Memoria.
 
-### 2. Install from the Hermes catalog (after acceptance)
+### 2. Install from GitHub
 
-Use this method only after the catalog PR is merged and the Memoria entry is
-available in your Hermes catalog. Check for it with:
-
-```sh
-hermes plugins search memoria
-```
-
-Then install the reviewed catalog version:
+For a fixed GitHub installation, first log in at [Memoria](https://thememoria.ai)
+and create/copy a memory-service API key. These commands install the commit
+verified in the October 9, 2026 local CLI acceptance, then configure and start
+the default profile:
 
 ```sh
-hermes plugins install memoria --yes-deps --enable
+hermes plugins install 'https://github.com/matrixorigin/memoria#plugins/hermes' \
+  --ref 3a5c5065b2820d56dd3d8ac8bb259a9424b1476e \
+  --yes-deps --enable
+hermes memory setup
+hermes memory status
+hermes
 ```
 
-The catalog supplies the reviewed commit automatically. If Memoria is not listed,
-use the GitHub installation above instead.
+The `#plugins/hermes` suffix selects the plugin directory inside the repository.
+In `hermes memory setup`, select **memoria**, paste the API key at the masked
+prompt (or press Enter to retain an existing key), and enter `true` or `false`
+for automatic capture. Check that status reports `memoria`, installed and
+`available`; this checks local readiness, not the validity of a live Cloud request.
+Exit any existing conversation before starting the new one. Hermes needs its own
+chat-model credentials. Use the one-time write check in Step 5 above to verify
+Cloud storage and recall. For named profiles, add `-p <profile-name>` to every command.
+
+### Switch an existing GitHub install to the catalog
+
+Stop existing Hermes conversations, then replace the installed plugin with the
+catalog version in the same profile:
+
+```sh
+hermes plugins install memoria --force --yes-deps --enable
+hermes memory status
+```
+
+The API key, provider configuration and outbox are stored outside the plugin
+directory. Start a new conversation after replacement. For later reviewed
+catalog updates, use `hermes plugins update memoria`; this follows the catalog
+pin rather than the Memoria `main` branch.
 
 ### 3. Install from a local checkout (development)
 
@@ -119,7 +149,8 @@ For a default profile whose home is `~/.hermes`, from the Memoria repository:
 mkdir -p ~/.hermes/plugins
 cp -R plugins/hermes ~/.hermes/plugins/memoria
 hermes plugins validate ~/.hermes/plugins/memoria --install-deps
-hermes plugins enable memoria
+hermes memory setup
+hermes memory status
 ```
 
 Do not overwrite an existing `plugins/memoria` directory without checking its contents.
@@ -158,11 +189,10 @@ For an existing named profile, use `-p <profile-name>` on every Hermes command.
 For example, install and configure the plugin in `memoria-acceptance`:
 
 ```sh
-hermes -p memoria-acceptance plugins install 'https://github.com/matrixorigin/memoria#plugins/hermes' \
-  --ref 3a5c5065b2820d56dd3d8ac8bb259a9424b1476e \
-  --yes-deps --enable
+hermes -p memoria-acceptance plugins install memoria --yes-deps --enable
 hermes -p memoria-acceptance memory setup
 hermes -p memoria-acceptance memory status
+hermes -p memoria-acceptance
 ```
 
 For a local-copy installation into a named profile, also substitute its actual
@@ -181,7 +211,7 @@ substitute for configuring the memory provider and its API key.
 | Write approval | External mutations/capture pause while Hermes `memory.write_approval` is enabled |
 | Deployment | Default free Cloud, optional self-hosted API origin |
 
-The preview supports local CLI/desktop contexts. Gateway platforms are disabled
+Local CLI acceptance has passed; Desktop has not been validated. Gateway platforms are disabled
 at runtime, including read tools, until per-turn author mapping has been validated.
 Non-primary contexts (subagent, cron, flush) do not automatically capture or run
 mutation tools. Bot turns are not automatically captured.
@@ -375,8 +405,8 @@ Use a normal user API Key. These live checks create/delete test data and are
 separate from the offline unit suite. The October 8 acceptance passed 13 checks
 against the Cloud API through the real Hermes MemoryManager, including automatic
 capture and two-profile isolation. No production admin/master key is needed.
-The website Hermes onboarding should be exposed only after the release commit
-and Git installation command are verified.
+Catalog installation and interactive configuration were verified separately on
+October 11, 2026; that check verifies setup only, not live API authentication.
 
 An opt-in repeatable acceptance script reads the key from a local file (either
 `MEMORIA_API_KEY=...` dotenv syntax or one bare `sk-...` line), creates a disposable
@@ -411,5 +441,5 @@ The plugin intentionally uses the REST adapter directly, so distribution does no
 depend on releasing new subject/branch arguments in `memoria-client`. Equivalent
 SDK additions can be made separately without blocking this preview.
 
-See [RELEASE.md](RELEASE.md) for the catalog submission process.
+See [RELEASE.md](RELEASE.md) for the catalog release and update process.
 See [REVIEW_FIXES.md](REVIEW_FIXES.md) for the concurrency/retry review follow-up.
