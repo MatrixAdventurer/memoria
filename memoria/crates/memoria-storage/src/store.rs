@@ -842,21 +842,20 @@ pub fn validate_fulltext_query(query: &str) -> Result<(), MemoriaError> {
     Ok(())
 }
 
-/// Sanitize a string for use in a LIKE pattern (escapes `%`).
-/// Build the body of a `LIKE ? ESCAPE '!'` pattern that matches `s` as a
-/// literal substring: `%`, `_` and the escape character itself are escaped so
-/// they cannot act as wildcards (a topic purge of `a_b` must not delete `aXb`).
+/// Build the body of a `LIKE ?` pattern that matches `s` as a literal
+/// substring: `%`, `_` and the default escape character `\` are
+/// backslash-escaped so they cannot act as wildcards (a topic purge of `a_b`
+/// must not delete `aXb`). The default backslash escape is used instead of an
+/// `ESCAPE` clause because MatrixOne 4.1.x ignores custom `ESCAPE` characters.
+/// The pattern is a bind parameter, so `'` needs no special handling; only NUL
+/// is dropped.
 fn sanitize_like_pattern(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars().filter(|c| *c != '\0') {
-        match c {
-            '\'' | '\\' => out.push(' '),
-            '!' | '%' | '_' => {
-                out.push('!');
-                out.push(c);
-            }
-            _ => out.push(c),
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
         }
+        out.push(c);
     }
     out
 }
@@ -5819,7 +5818,7 @@ impl SqlMemoryStore {
                 "SELECT memory_id FROM {table} \
                  WHERE user_id = ? AND is_active = 1 \
                    AND MATCH(content) AGAINST('{ft_terms}' IN BOOLEAN MODE) \
-                   AND content LIKE ? ESCAPE '!'"
+                   AND content LIKE ?"
             );
             let rows: Vec<(String,)> = sqlx::query_as(&sql)
                 .bind(user_id)
@@ -5835,7 +5834,7 @@ impl SqlMemoryStore {
         // Fallback: LIKE on user's active memories (idx_user_active narrows scan)
         let sql = format!(
             "SELECT memory_id FROM {table} \
-             WHERE user_id = ? AND is_active = 1 AND content LIKE ? ESCAPE '!' LIMIT 500"
+             WHERE user_id = ? AND is_active = 1 AND content LIKE ? LIMIT 500"
         );
         let rows: Vec<(String,)> = sqlx::query_as(&sql)
             .bind(user_id)
@@ -6685,18 +6684,18 @@ mod tests {
         ConnectionAnomalyKind, OwnedEditLogEntry, PoolHealthLevel, PoolHealthSnapshot,
         SqlMemoryStore, FULLTEXT_QUERY_MAX_BYTES,
     };
-
-    #[test]
-    fn sanitize_like_pattern_escapes_wildcards_for_literal_topic_match() {
-        assert_eq!(super::sanitize_like_pattern("user_id"), "user!_id");
-        assert_eq!(super::sanitize_like_pattern("50% off!"), "50!% off!!");
-        assert_eq!(super::sanitize_like_pattern("it's a\\b\0"), "it s a b");
-        assert_eq!(super::sanitize_like_pattern("plain topic"), "plain topic");
-    }
     use memoria_core::{Memory, MemoryType, TrustTier};
     use sqlx::mysql::MySqlPoolOptions;
     use std::io::{self, Write};
     use std::sync::{Arc, Mutex, OnceLock};
+
+    #[test]
+    fn sanitize_like_pattern_escapes_wildcards_for_literal_topic_match() {
+        assert_eq!(super::sanitize_like_pattern("user_id"), r"user\_id");
+        assert_eq!(super::sanitize_like_pattern("50% off!"), r"50\% off!");
+        assert_eq!(super::sanitize_like_pattern("it's a\\b\0"), r"it's a\\b");
+        assert_eq!(super::sanitize_like_pattern("plain topic"), "plain topic");
+    }
 
     static LOG_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
