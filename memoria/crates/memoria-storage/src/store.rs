@@ -842,16 +842,22 @@ pub fn validate_fulltext_query(query: &str) -> Result<(), MemoriaError> {
     Ok(())
 }
 
-/// Sanitize a string for use in a LIKE pattern (escapes `%`).
+/// Build the body of a `LIKE ?` pattern that matches `s` as a literal
+/// substring: `%`, `_` and the default escape character `\` are
+/// backslash-escaped so they cannot act as wildcards (a topic purge of `a_b`
+/// must not delete `aXb`). The default backslash escape is used instead of an
+/// `ESCAPE` clause because MatrixOne 4.1.x ignores custom `ESCAPE` characters.
+/// The pattern is a bind parameter, so `'` needs no special handling; only NUL
+/// is dropped.
 fn sanitize_like_pattern(s: &str) -> String {
-    s.chars()
-        .filter(|c| *c != '\0')
-        .map(|c| match c {
-            '\'' | '\\' => ' ',
-            '%' => ' ',
-            _ => c,
-        })
-        .collect()
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars().filter(|c| *c != '\0') {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 fn vec_to_mo(v: &[f32]) -> String {
@@ -6682,6 +6688,14 @@ mod tests {
     use sqlx::mysql::MySqlPoolOptions;
     use std::io::{self, Write};
     use std::sync::{Arc, Mutex, OnceLock};
+
+    #[test]
+    fn sanitize_like_pattern_escapes_wildcards_for_literal_topic_match() {
+        assert_eq!(super::sanitize_like_pattern("user_id"), r"user\_id");
+        assert_eq!(super::sanitize_like_pattern("50% off!"), r"50\% off!");
+        assert_eq!(super::sanitize_like_pattern("it's a\\b\0"), r"it's a\\b");
+        assert_eq!(super::sanitize_like_pattern("plain topic"), "plain topic");
+    }
 
     static LOG_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
