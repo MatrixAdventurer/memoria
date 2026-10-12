@@ -3,7 +3,21 @@ use memoria_core::{interfaces::EmbeddingProvider, MemoriaError};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// Mock embedder for benchmarking. Returns deterministic vectors based on content hash.
+/// Mock embedder for benchmarking and local/dev use when `EMBEDDING_PROVIDER` is
+/// unset. Returns deterministic unit vectors based on a content hash.
+///
+/// # Upgrade note
+/// The mixing algorithm changed in the fix for mock-vector collapse: the same
+/// text now produces a **different** vector than older builds. Those L2
+/// distances are typically ~1.4, well above the store's default ~0.3162
+/// deduplication threshold, so posting identical content after an upgrade can
+/// miss the old record and create a duplicate. Previously superseded records
+/// are not restored automatically.
+///
+/// Supported recovery: rebuild / re-embed mock-backed memories (purge the user
+/// or collection and re-ingest), or switch `EMBEDDING_PROVIDER` to a real
+/// embedder before relying on cross-version dedup. Fresh installs are
+/// unaffected.
 pub struct MockEmbedder {
     dim: usize,
 }
@@ -91,5 +105,56 @@ mod tests {
     async fn same_text_is_deterministic() {
         let e = MockEmbedder::new(64);
         assert_eq!(e.embed("x").await.unwrap(), e.embed("x").await.unwrap());
+    }
+
+    /// Old algorithm (pre-SplitMix) vs new: L2 is above the default dedup
+    /// threshold (~0.3162), so upgrades cannot rely on vector equality for the
+    /// same text.
+    fn legacy_collapsed_embed(dim: usize, text: &str) -> Vec<f32> {
+        let mut hasher = DefaultHasher::new();
+        text.hash(&mut hasher);
+        let seed = hasher.finish();
+        let mut v: Vec<f32> = (0..dim)
+            .map(|i| {
+                let x = (seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(i as u64)) as f32
+                    / u64::MAX as f32;
+                x * 2.0 - 1.0
+            })
+            .collect();
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            v.iter_mut().for_each(|x| *x /= norm);
+        }
+        v
+    }
+
+    fn l2(a: &[f32], b: &[f32]) -> f32 {
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| {
+                let d = x - y;
+                d * d
+            })
+            .sum::<f32>()
+            .sqrt()
+    }
+
+    #[tokio::test]
+    async fn upgrade_changes_vectors_above_dedup_threshold() {
+        const DEDUP_L2: f32 = 0.3162;
+        let e = MockEmbedder::new(1024);
+        for text in [
+            "Alice likes green tea",
+            "Server room is on floor 3",
+            "Quarterly OKR review is in March",
+        ] {
+            let new_v = e.embed(text).await.unwrap();
+            let old_v = legacy_collapsed_embed(1024, text);
+            let dist = l2(&old_v, &new_v);
+            assert!(
+                dist > DEDUP_L2,
+                "text {text:?}: old-vs-new L2 {dist} should exceed dedup threshold {DEDUP_L2}"
+            );
+        }
     }
 }
