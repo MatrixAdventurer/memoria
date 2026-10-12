@@ -525,7 +525,7 @@ async fn cmd_serve(db_url: Option<String>, port: u16, master_key: String) -> Res
 
     memoria_api::otel::init_tracing();
 
-    let mut cfg = Config::from_env_with_db_url(db_url);
+    let mut cfg = Config::from_env_with_db_url(db_url).map_err(anyhow::Error::msg)?;
 
     validate_embedding_config(&cfg)?;
     bootstrap_runtime_topology(&mut cfg).await?;
@@ -696,7 +696,7 @@ async fn cmd_mcp(
     }
 
     // Embedded mode
-    let mut cfg = Config::from_env_with_db_url(db_url);
+    let mut cfg = Config::from_env_with_db_url(db_url).map_err(anyhow::Error::msg)?;
     if let Some(v) = user {
         cfg.user = v;
     }
@@ -843,7 +843,7 @@ async fn cmd_plugin(command: PluginCommands) -> Result<()> {
         PluginCommands::Init { .. } | PluginCommands::DevKeygen { .. } => unreachable!(),
     };
 
-    let cfg = Config::from_env_with_db_url(cfg_db_url);
+    let cfg = Config::from_env_with_db_url(cfg_db_url).map_err(anyhow::Error::msg)?;
     let store =
         SqlMemoryStore::connect(&cfg.db_url, cfg.embedding_dim, cfg.instance_id.clone()).await?;
     store.migrate().await?;
