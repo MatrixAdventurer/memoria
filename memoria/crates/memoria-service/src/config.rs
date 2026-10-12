@@ -78,8 +78,29 @@ pub struct Config {
 impl Config {
     /// Load from environment variables with sensible defaults.
     pub fn from_env() -> Self {
-        let db_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "mysql://root:111@localhost:6001/memoria".to_string());
+        Self::build(None)
+    }
+
+    /// Like [`Config::from_env`], but `db_url` (e.g. from a `--db-url` CLI flag)
+    /// takes precedence over `DATABASE_URL`. The shared DB URL and `db_name`
+    /// are derived from the effective URL unless `MEMORIA_SHARED_DATABASE_URL`
+    /// / `MEMORIA_DB_NAME` are set explicitly.
+    ///
+    /// Only `None` falls back to `DATABASE_URL`; an explicitly supplied but
+    /// blank URL (e.g. `--db-url "$UNSET_VAR"`) is rejected instead of
+    /// silently connecting to some other database.
+    pub fn from_env_with_db_url(db_url: Option<String>) -> Result<Self, String> {
+        if matches!(&db_url, Some(s) if s.trim().is_empty()) {
+            return Err("--db-url was given an empty value; pass a database URL or omit the flag to use DATABASE_URL".to_string());
+        }
+        Ok(Self::build(db_url))
+    }
+
+    fn build(db_url: Option<String>) -> Self {
+        let db_url = db_url.unwrap_or_else(|| {
+            std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "mysql://root:111@localhost:6001/memoria".to_string())
+        });
         let multi_db = env_bool("MEMORIA_MULTI_DB");
         let shared_db_url = std::env::var("MEMORIA_SHARED_DATABASE_URL")
             .ok()
@@ -89,8 +110,12 @@ impl Config {
             });
 
         // Extract db_name from URL (last path segment) or from MEMORIA_DB_NAME
-        let db_name = std::env::var("MEMORIA_DB_NAME")
-            .unwrap_or_else(|_| db_url.rsplit('/').next().unwrap_or("memoria").to_string());
+        // (query string / fragment such as `?ssl-mode=REQUIRED` is not part of it).
+        let db_name = std::env::var("MEMORIA_DB_NAME").unwrap_or_else(|_| {
+            split_database_url(&db_url)
+                .map(|(_, name, _)| name.to_string())
+                .unwrap_or_else(|| db_url.rsplit('/').next().unwrap_or("memoria").to_string())
+        });
 
         let embedding_dim = std::env::var("EMBEDDING_DIM")
             .ok()
@@ -279,6 +304,108 @@ mod tests {
             Some(value) => std::env::set_var("MEMORIA_GOVERNANCE_PLUGIN_SUBJECT", value),
             None => std::env::remove_var("MEMORIA_GOVERNANCE_PLUGIN_SUBJECT"),
         }
+    }
+
+    #[test]
+    fn cli_db_url_drives_shared_db_url_and_db_name() {
+        with_env(
+            &[
+                ("DATABASE_URL", None),
+                ("MEMORIA_SHARED_DATABASE_URL", None),
+                ("MEMORIA_DB_NAME", None),
+            ],
+            || {
+                let cfg = Config::from_env_with_db_url(Some(
+                    "mysql://root:111@127.0.0.1:6011/memoria_bench".to_string(),
+                ))
+                .unwrap();
+                assert_eq!(cfg.db_url, "mysql://root:111@127.0.0.1:6011/memoria_bench");
+                assert_eq!(
+                    cfg.shared_db_url,
+                    "mysql://root:111@127.0.0.1:6011/memoria_shared"
+                );
+                assert_eq!(cfg.db_name, "memoria_bench");
+
+                // No override falls back to the default DATABASE_URL.
+                let cfg = Config::from_env_with_db_url(None).unwrap();
+                assert_eq!(cfg.db_url, "mysql://root:111@localhost:6001/memoria");
+                assert_eq!(
+                    cfg.shared_db_url,
+                    "mysql://root:111@localhost:6001/memoria_shared"
+                );
+            },
+        );
+        // The CLI value wins over DATABASE_URL; explicit shared URL / db name still win.
+        with_env(
+            &[
+                (
+                    "DATABASE_URL",
+                    Some("mysql://root:111@localhost:6001/memoria"),
+                ),
+                (
+                    "MEMORIA_SHARED_DATABASE_URL",
+                    Some("mysql://root:111@shared-host:6001/registry"),
+                ),
+                ("MEMORIA_DB_NAME", Some("custom_db")),
+            ],
+            || {
+                let cfg = Config::from_env_with_db_url(Some(
+                    "mysql://root:111@127.0.0.1:6011/memoria_bench".to_string(),
+                ))
+                .unwrap();
+                assert_eq!(cfg.db_url, "mysql://root:111@127.0.0.1:6011/memoria_bench");
+                assert_eq!(
+                    cfg.shared_db_url,
+                    "mysql://root:111@shared-host:6001/registry"
+                );
+                assert_eq!(cfg.db_name, "custom_db");
+            },
+        );
+    }
+
+    #[test]
+    fn blank_cli_db_url_is_rejected_not_replaced() {
+        with_env(
+            &[
+                ("DATABASE_URL", Some("mysql://root:111@other-host:6001/other_db")),
+                ("MEMORIA_SHARED_DATABASE_URL", None),
+                ("MEMORIA_DB_NAME", None),
+            ],
+            || {
+                for blank in ["", "   ", "	"] {
+                    assert!(
+                        Config::from_env_with_db_url(Some(blank.to_string())).is_err(),
+                        "blank --db-url {blank:?} must not fall back to DATABASE_URL"
+                    );
+                }
+                // Omitting the flag still uses DATABASE_URL.
+                let cfg = Config::from_env_with_db_url(None).unwrap();
+                assert_eq!(cfg.db_url, "mysql://root:111@other-host:6001/other_db");
+                assert_eq!(cfg.db_name, "other_db");
+            },
+        );
+    }
+
+    #[test]
+    fn derived_db_name_excludes_query_string() {
+        with_env(
+            &[
+                ("DATABASE_URL", None),
+                ("MEMORIA_SHARED_DATABASE_URL", None),
+                ("MEMORIA_DB_NAME", None),
+            ],
+            || {
+                let cfg = Config::from_env_with_db_url(Some(
+                    "mysql://root:111@127.0.0.1:6011/memoria_bench?ssl-mode=REQUIRED".to_string(),
+                ))
+                .unwrap();
+                assert_eq!(cfg.db_name, "memoria_bench");
+                assert_eq!(
+                    cfg.shared_db_url,
+                    "mysql://root:111@127.0.0.1:6011/memoria_shared?ssl-mode=REQUIRED"
+                );
+            },
+        );
     }
 
     // ── EmbeddingEndpoint / resolved_embedding_endpoints tests ───────────────
