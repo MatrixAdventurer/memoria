@@ -15,8 +15,10 @@ use std::hash::{Hash, Hasher};
 /// are not restored automatically.
 ///
 /// Supported recovery: rebuild / re-embed mock-backed memories (purge the user
-/// or collection and re-ingest), or switch `EMBEDDING_PROVIDER` to a real
-/// embedder before relying on cross-version dedup. Fresh installs are
+/// or collection and re-ingest) **with whatever provider you will use going
+/// forward**. Switching `EMBEDDING_PROVIDER` alone does not rewrite persisted
+/// embeddings; new vectors are still compared against the old mock ones, so
+/// cross-version dedup is not restored by a config change. Fresh installs are
 /// unaffected.
 pub struct MockEmbedder {
     dim: usize,
@@ -116,7 +118,9 @@ mod tests {
         let seed = hasher.finish();
         let mut v: Vec<f32> = (0..dim)
             .map(|i| {
-                let x = (seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(i as u64)) as f32
+                let x = (seed
+                    .wrapping_mul(6364136223846793005) // actual pre-fix multiplier
+                    .wrapping_add(i as u64)) as f32
                     / u64::MAX as f32;
                 x * 2.0 - 1.0
             })
