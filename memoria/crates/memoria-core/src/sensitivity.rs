@@ -77,7 +77,9 @@ static PATTERNS: &[Pattern] = &[
     Pattern {
         label: "phone",
         tier: SensitivityTier::Medium,
-        regex: r"\b\d{3}[-.]?\d{3,4}[-.]?\d{4}\b",
+        // Require at least one separator so opaque 10-11 digit identifiers
+        // (for example GitHub comment IDs) are not mistaken for phone numbers.
+        regex: r"\b(?:\d{3}[-.]\d{3,4}[-.]?\d{4}|\d{3}[-.]?\d{3,4}[-.]\d{4})\b",
         replacement: "[phone]",
     },
     Pattern {
@@ -332,7 +334,6 @@ mod tests {
     }
 
     #[test]
-    // Regression for opaque numeric identifiers that resemble phone numbers.
     fn unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers() {
         for text in [
             "see https://github.com/org/repo/issues/1#issuecomment-4345955198",
