@@ -1,0 +1,166 @@
+name: Verify issue 195 phone identifiers v2
+
+on:
+  push:
+    branches:
+      - verify/195-phone-identifiers-v2
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+  DATABASE_URL: mysql://root:111@localhost:6001/memoria_test
+  EMBEDDING_PROVIDER: mock
+  EMBEDDING_API_KEY: ""
+  EMBEDDING_BASE_URL: ""
+  EMBEDDING_MODEL: BAAI/bge-m3
+  EMBEDDING_DIM: "1024"
+  LLM_API_KEY: ""
+  LLM_BASE_URL: ""
+  LLM_MODEL: ""
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      matrixone:
+        image: matrixorigin/matrixone:latest
+        ports:
+          - 6001:6001
+        options: --memory=4g
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0d6edfc231bf8456e9df6033d5d30fbc32865d5b
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: memoria
+          shared-key: memoria-issue-195
+          save-if: false
+      - name: Add regression tests only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("memoria/crates/memoria-core/src/sensitivity.rs")
+          text = path.read_text()
+          marker = """    #[test]
+              fn test_ssn_redacted() {"""
+          tests = """    #[test]
+              fn unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers() {
+                  for text in [
+                      "see https://github.com/org/repo/issues/1#issuecomment-4345955198",
+                      "order 4345955198 is ready",
+                      "transaction 12345678901 completed",
+                  ] {
+                      let result = check_sensitivity(text);
+                      assert!(!result.blocked, "numeric identifier was blocked: {text}");
+                      assert!(
+                          result.redacted_content.is_none(),
+                          "numeric identifier was redacted: {text}"
+                      );
+                      assert!(result.matched_labels.is_empty());
+                  }
+              }
+
+              #[test]
+              fn phone_redaction_keeps_supported_separator_forms() {
+                  for phone in [
+                      "555-867-5309",
+                      "555.867.5309",
+                      "555-8675-5309",
+                      "555867-5309",
+                      "555-8675309",
+                  ] {
+                      let result = check_sensitivity(&format!("call {phone} anytime"));
+                      assert!(!result.blocked);
+                      assert_eq!(
+                          result.redacted_content.as_deref(),
+                          Some("call [phone] anytime")
+                      );
+                      assert_eq!(result.matched_labels, vec!["phone"]);
+                  }
+              }
+
+          """
+          if text.count(marker) != 1:
+              raise SystemExit("test insertion marker changed")
+          path.write_text(text.replace(marker, tests + marker))
+          PY
+      - name: Reproduce original false positive
+        run: |
+          set +e
+          cd memoria
+          cargo test -p memoria-core unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers -- --nocapture 2>&1 | tee ../baseline.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -q "numeric identifier was redacted" ../baseline.log
+      - name: Apply candidate fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("memoria/crates/memoria-core/src/sensitivity.rs")
+          text = path.read_text()
+          old = '''        regex: r"\\b\\d{3}[-.]?\\d{3,4}[-.]?\\d{4}\\b",'''
+          new = '''        // Require at least one separator so opaque 10-11 digit identifiers
+                  // (for example GitHub comment IDs) are not mistaken for phone numbers.
+                  regex: r"\\b(?:\\d{3}[-.]\\d{3,4}[-.]?\\d{4}|\\d{3}[-.]?\\d{3,4}[-.]\\d{4})\\b",'''
+          if text.count(old) != 1:
+              raise SystemExit("phone regex marker changed")
+          path.write_text(text.replace(old, new))
+          PY
+          cd memoria
+          cargo fmt --all
+      - name: Focused regression tests
+        working-directory: memoria
+        run: cargo test -p memoria-core sensitivity::tests:: -- --nocapture
+      - name: Formatting
+        working-directory: memoria
+        run: cargo fmt --all -- --check
+      - name: Check and clippy
+        working-directory: memoria
+        run: |
+          cargo check
+          cargo clippy -- -D warnings
+      - name: Unit tests
+        working-directory: memoria
+        run: cargo test --lib -p memoria-api -p memoria-core -p memoria-service -p memoria-mcp
+      - name: Wait for MatrixOne
+        run: |
+          for i in $(seq 1 30); do
+            bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null && break
+            echo "Waiting... ($i/30)" && sleep 3
+          done
+      - name: All tests
+        working-directory: memoria
+        run: cargo test -- --test-threads=1
+      - name: Restore transaction failure regression
+        working-directory: memoria
+        run: cargo test -p memoria-git --lib failed_insert_rolls_back_preceding_delete -- --ignored --nocapture
+      - name: Branch capability probe cleanup regression
+        working-directory: memoria
+        run: cargo test -p memoria-storage --lib materialized_probe_cleanup_preserves_unrelated_tables -- --ignored --nocapture
+      - name: Offline restore cleanup regressions
+        working-directory: memoria
+        run: cargo test -p memoria-git --example restore_cleanup -- --include-ignored --nocapture
+      - name: Preserve candidate
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/memoria-195"
+          git diff HEAD --binary -- memoria/crates/memoria-core/src/sensitivity.rs > "$RUNNER_TEMP/memoria-195/fix.patch"
+          git diff HEAD --numstat -- memoria/crates/memoria-core/src/sensitivity.rs > "$RUNNER_TEMP/memoria-195/numstat.txt"
+          git diff HEAD --check
+          git hash-object memoria/crates/memoria-core/src/sensitivity.rs > "$RUNNER_TEMP/memoria-195/blob.txt"
+          cp baseline.log "$RUNNER_TEMP/memoria-195/baseline.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memoria-195-validation
+          path: ${{ runner.temp }}/memoria-195
