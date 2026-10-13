@@ -77,7 +77,9 @@ static PATTERNS: &[Pattern] = &[
     Pattern {
         label: "phone",
         tier: SensitivityTier::Medium,
-        regex: r"\b\d{3}[-.]?\d{3,4}[-.]?\d{4}\b",
+        // Require at least one separator so opaque 10-11 digit identifiers
+        // (for example GitHub comment IDs) are not mistaken for phone numbers.
+        regex: r"\b(?:\d{3}[-.]\d{3,4}[-.]?\d{4}|\d{3}[-.]?\d{3,4}[-.]\d{4})\b",
         replacement: "[phone]",
     },
     Pattern {
@@ -329,6 +331,42 @@ mod tests {
         let r = check_sensitivity("call 555-867-5309 anytime");
         assert!(!r.blocked);
         assert!(r.redacted_content.as_deref().unwrap().contains("[phone]"));
+    }
+
+    #[test]
+    fn unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers() {
+        for text in [
+            "see https://github.com/org/repo/issues/1#issuecomment-4345955198",
+            "order 4345955198 is ready",
+            "transaction 12345678901 completed",
+        ] {
+            let result = check_sensitivity(text);
+            assert!(!result.blocked, "numeric identifier was blocked: {text}");
+            assert!(
+                result.redacted_content.is_none(),
+                "numeric identifier was redacted: {text}"
+            );
+            assert!(result.matched_labels.is_empty());
+        }
+    }
+
+    #[test]
+    fn phone_redaction_keeps_supported_separator_forms() {
+        for phone in [
+            "555-867-5309",
+            "555.867.5309",
+            "555-8675-5309",
+            "555867-5309",
+            "555-8675309",
+        ] {
+            let result = check_sensitivity(&format!("call {phone} anytime"));
+            assert!(!result.blocked);
+            assert_eq!(
+                result.redacted_content.as_deref(),
+                Some("call [phone] anytime")
+            );
+            assert_eq!(result.matched_labels, vec!["phone"]);
+        }
     }
 
     #[test]
