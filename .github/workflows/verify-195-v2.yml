@@ -1,4 +1,4 @@
-name: Verify issue 195 phone identifiers v2
+name: Verify issue 195 phone identifiers v2 (clean run)
 
 on:
   push:
