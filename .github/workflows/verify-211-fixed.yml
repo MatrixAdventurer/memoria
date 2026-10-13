@@ -1,0 +1,185 @@
+name: Verify MCP memory type validation
+
+# 由 LW 授权的 ChatGPT Personal 智能体提交。
+on:
+  push:
+    branches: [verify/211-fixed]
+permissions:
+  contents: read
+
+env:
+  FIX_PATCH_B64: ZGlmZiAtLWdpdCBhL21lbW9yaWEvY3JhdGVzL21lbW9yaWEtbWNwL3NyYy9zZXJ2ZXIucnMgYi9tZW1vcmlhL2NyYXRlcy9tZW1vcmlhLW1jcC9zcmMvc2VydmVyLnJzCmluZGV4IDY0ODdlODYuLjc0NzViYTMgMTAwNjQ0Ci0tLSBhL21lbW9yaWEvY3JhdGVzL21lbW9yaWEtbWNwL3NyYy9zZXJ2ZXIucnMKKysrIGIvbWVtb3JpYS9jcmF0ZXMvbWVtb3JpYS1tY3Avc3JjL3NlcnZlci5ycwpAQCAtNzY3LDYgKzc2Nyw4IEBAIG1vZCB0ZXN0cyB7CiAgICAgICAgICkpOwogICAgICAgICBmb3IgcGFyYW1zIGluIFsKICAgICAgICAgICAgIGpzb24hKHsibmFtZSI6Im1lbW9yeV9zdG9yZSIsICJhcmd1bWVudHMiOnsiY29udGVudCI6IiJ9fSksCisgICAgICAgICAgICBqc29uISh7Im5hbWUiOiJtZW1vcnlfc3RvcmUiLCAiYXJndW1lbnRzIjp7ImNvbnRlbnQiOiJhIHZhbGlkIGZhY3QiLCAibWVtb3J5X3R5cGUiOiJpbnZhbGlkX3h5eiJ9fSksCisgICAgICAgICAgICBqc29uISh7Im5hbWUiOiJtZW1vcnlfc3RvcmUiLCAiYXJndW1lbnRzIjp7ImNvbnRlbnQiOiJhIHZhbGlkIGZhY3QiLCAibWVtb3J5X3R5cGUiOjQyfX0pLAogICAgICAgICAgICAganNvbiEoeyJuYW1lIjoibWVtb3J5X2FwcGx5IiwgImFyZ3VtZW50cyI6eyJzb3VyY2UiOiJtYWluIn19KSwKICAgICAgICAgICAgIGpzb24hKHsibmFtZSI6Im1lbW9yeV9hcHBseSIsICJhcmd1bWVudHMiOnsic291cmNlIjo0Mn19KSwKICAgICAgICAgXSB7CkBAIC03ODUsNiArNzg3LDEyIEBAIG1vZCB0ZXN0cyB7CiAgICAgICAgICAgICAgICAgbGV0IHJlc3VsdCA9IHJlc3VsdC5leHBlY3QoImV4ZWN1dGlvbiBlcnJvcnMgbXVzdCBiZSByZXN1bHRzIik7CiAgICAgICAgICAgICAgICAgYXNzZXJ0X2VxIShyZXN1bHRbImlzRXJyb3IiXSwgdHJ1ZSwgIntyZXN1bHR9Iik7CiAgICAgICAgICAgICAgICAgYXNzZXJ0ISghcmVzdWx0WyJjb250ZW50Il1bMF1bInRleHQiXS5hc19zdHIoKS51bndyYXAoKS5pc19lbXB0eSgpKTsKKyAgICAgICAgICAgICAgICBpZiBwYXJhbXNbImFyZ3VtZW50cyJdLmdldCgibWVtb3J5X3R5cGUiKS5pc19zb21lKCkgeworICAgICAgICAgICAgICAgICAgICBhc3NlcnQhKHJlc3VsdFsiY29udGVudCJdWzBdWyJ0ZXh0Il0KKyAgICAgICAgICAgICAgICAgICAgICAgIC5hc19zdHIoKQorICAgICAgICAgICAgICAgICAgICAgICAgLnVud3JhcCgpCisgICAgICAgICAgICAgICAgICAgICAgICAuY29udGFpbnMoIm1lbW9yeV90eXBlIikpOworICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICBpZiBwYXJhbXNbImFyZ3VtZW50cyJdWyJzb3VyY2UiXSA9PSA0MiB7CiAgICAgICAgICAgICAgICAgICAgIGFzc2VydCEoCiAgICAgICAgICAgICAgICAgICAgICAgICByZXN1bHRbImNvbnRlbnQiXVswXVsidGV4dCJdCmRpZmYgLS1naXQgYS9tZW1vcmlhL2NyYXRlcy9tZW1vcmlhLW1jcC9zcmMvdG9vbHMucnMgYi9tZW1vcmlhL2NyYXRlcy9tZW1vcmlhLW1jcC9zcmMvdG9vbHMucnMKaW5kZXggNGU2NzZkZC4uYmE5NjkzOCAxMDA2NDQKLS0tIGEvbWVtb3JpYS9jcmF0ZXMvbWVtb3JpYS1tY3Avc3JjL3Rvb2xzLnJzCisrKyBiL21lbW9yaWEvY3JhdGVzL21lbW9yaWEtbWNwL3NyYy90b29scy5ycwpAQCAtMTE2LDYgKzExNiwxNiBAQCBmbiBwYXJzZV9zdG9yZV9jb250ZW50KGFyZ3M6ICZWYWx1ZSkgLT4gUmVzdWx0PFN0cmluZywgJidzdGF0aWMgc3RyPiB7CiAgICAgcGFyc2VfcmVxdWlyZWRfc3RyKGFyZ3MsICJjb250ZW50IiwgImNvbnRlbnQgaXMgcmVxdWlyZWQiKQogfQogCitmbiBwYXJzZV9zdG9yZV9tZW1vcnlfdHlwZShhcmdzOiAmVmFsdWUpIC0+IFJlc3VsdDxNZW1vcnlUeXBlLCAmJ3N0YXRpYyBzdHI+IHsKKyAgICBtYXRjaCBhcmdzLmdldCgibWVtb3J5X3R5cGUiKSB7CisgICAgICAgIE5vbmUgfCBTb21lKFZhbHVlOjpOdWxsKSA9PiBPayhNZW1vcnlUeXBlOjpTZW1hbnRpYyksCisgICAgICAgIFNvbWUoVmFsdWU6OlN0cmluZyhuYW1lKSkgPT4geworICAgICAgICAgICAgTWVtb3J5VHlwZTo6ZnJvbV9zdHIobmFtZSkubWFwX2Vycih8X3wgImludmFsaWQgbWVtb3J5X3R5cGUiKQorICAgICAgICB9CisgICAgICAgIFNvbWUoXykgPT4gRXJyKCJtZW1vcnlfdHlwZSBtdXN0IGJlIGEgc3RyaW5nIiksCisgICAgfQorfQorCiAvLy8g5qCh6aqM5ZCE5bel5YW355qE5b+F5aGr6Z2e56m65a2X56ym5Liy5Y+C5pWw44CCZW1iZWRkZWQg5YiG5Y+R5Zyo5ZCEIGhhbmRsZXIg5YaF6YOo5bey6ZqQ5byP5qCh6aqM77yIcGFyc2VfcmVxdWlyZWRfc3Ry77yJ77yMCiAvLy8g5L2GIHJlbW90ZSDmqKHlvI/nm7TmjqXmi7wgUkVTVCBwYXlsb2FkIOS8mue7lei/h+agoemqjOKAlOKAlHJlbW90ZTo6Y2FsbCDliY3nva7osIPnlKjmnKzlh73mlbDku6Xkv53mjIHkuIDoh7TjgIIKIHB1YiBmbiB2YWxpZGF0ZV90b29sX2FyZ3MobmFtZTogJnN0ciwgYXJnczogJlZhbHVlKSAtPiBSZXN1bHQ8KCksICYnc3RhdGljIHN0cj4gewpAQCAtMTI3LDcgKzEzNywxMCBAQCBwdWIgZm4gdmFsaWRhdGVfdG9vbF9hcmdzKG5hbWU6ICZzdHIsIGFyZ3M6ICZWYWx1ZSkgLT4gUmVzdWx0PCgpLCAmJ3N0YXRpYyBzdHI+CiAgICAgICAgIH0KICAgICB9CiAgICAgbWF0Y2ggbmFtZSB7Ci0gICAgICAgICJtZW1vcnlfc3RvcmUiID0+IHBhcnNlX3JlcXVpcmVkX3N0cihhcmdzLCAiY29udGVudCIsICJjb250ZW50IGlzIHJlcXVpcmVkIikubWFwKHxffCAoKSksCisgICAgICAgICJtZW1vcnlfc3RvcmUiID0+IHsKKyAgICAgICAgICAgIHBhcnNlX3N0b3JlX2NvbnRlbnQoYXJncyk/OworICAgICAgICAgICAgcGFyc2Vfc3RvcmVfbWVtb3J5X3R5cGUoYXJncykubWFwKHxffCAoKSkKKyAgICAgICAgfQogICAgICAgICAibWVtb3J5X3JldHJpZXZlIiB8ICJtZW1vcnlfc2VhcmNoIiA9PiB7CiAgICAgICAgICAgICBwYXJzZV9yZXF1aXJlZF9zdHIoYXJncywgInF1ZXJ5IiwgInF1ZXJ5IGlzIHJlcXVpcmVkIikubWFwKHxffCAoKSkKICAgICAgICAgfQpAQCAtMjA2LDcgKzIxOSw3IEBAIHB1YiBmbiBsaXN0KCkgLT4gVmFsdWUgewogICAgICAgICAgICAgICAgICJ0eXBlIjogIm9iamVjdCIsCiAgICAgICAgICAgICAgICAgInByb3BlcnRpZXMiOiB7CiAgICAgICAgICAgICAgICAgICAgICJjb250ZW50IjogeyJ0eXBlIjogInN0cmluZyJ9LAotICAgICAgICAgICAgICAgICAgICAibWVtb3J5X3R5cGUiOiB7InR5cGUiOiAic3RyaW5nIiwgImRlZmF1bHQiOiAic2VtYW50aWMifSwKKyAgICAgICAgICAgICAgICAgICAgIm1lbW9yeV90eXBlIjogeyJ0eXBlIjogInN0cmluZyIsICJlbnVtIjogTWVtb3J5VHlwZTo6QUxMX05BTUVTLCAiZGVmYXVsdCI6ICJzZW1hbnRpYyJ9LAogICAgICAgICAgICAgICAgICAgICAic2Vzc2lvbl9pZCI6IHsidHlwZSI6ICJzdHJpbmcifSwKICAgICAgICAgICAgICAgICAgICAgImV4dHJhX21ldGFkYXRhIjogeyJ0eXBlIjogIm9iamVjdCIsICJkZXNjcmlwdGlvbiI6ICJPcHRpb25hbCBidXNpbmVzcyBtZXRhZGF0YSAoZS5nLiBzY2VuZSwgYWdlbnQpLiBQZXJzaXN0ZWQgd2l0aCB0aGUgbWVtb3J5IGFuZCByZXR1cm5lZCB2ZXJiYXRpbSBvbiByZWFkLiBNZW1vcmlhIGl0c2VsZiBkb2VzIG5vdCBzY29yZSBieSBpdDsgZG93bnN0cmVhbSBjb25zdW1lcnMgbWF5IHVzZSBpdCBmb3IgdGhlaXIgb3duIHJldHJpZXZhbC10aW1lIHJhbmtpbmcuIn0sCiAgICAgICAgICAgICAgICAgICAgICJzdWJqZWN0X2lkIjogeyJ0eXBlIjogInN0cmluZyIsICJkZXNjcmlwdGlvbiI6ICJTdGFibGUgYnVzaW5lc3MgSUQgb2YgdGhlIG1lbW9yeSBzdWJqZWN0IChlLmcuIGVuZC11c2VyIElEKS4gU2V0IGJ5IHRoZSBpbnRlZ3JhdGlvbiBsYXllcjsgb3B0aW9uYWwuIn0sCkBAIC00MjYsMTMgKzQzOSwxNSBAQCBwdWIgYXN5bmMgZm4gY2FsbCgKICAgICAgICAgICAgICAgICBPayhjb250ZW50KSA9PiBjb250ZW50LAogICAgICAgICAgICAgICAgIEVycihtc2cpID0+IHJldHVybiBPayhtY3BfZXJyb3IobXNnKSksCiAgICAgICAgICAgICB9OwotICAgICAgICAgICAgbGV0IG1lbW9yeV90eXBlID0gYXJnc1sibWVtb3J5X3R5cGUiXS5hc19zdHIoKS51bndyYXBfb3IoInNlbWFudGljIik7CisgICAgICAgICAgICBsZXQgbXQgPSBtYXRjaCBwYXJzZV9zdG9yZV9tZW1vcnlfdHlwZSgmYXJncykgeworICAgICAgICAgICAgICAgIE9rKG1lbW9yeV90eXBlKSA9PiBtZW1vcnlfdHlwZSwKKyAgICAgICAgICAgICAgICBFcnIobXNnKSA9PiByZXR1cm4gT2sobWNwX2Vycm9yKG1zZykpLAorICAgICAgICAgICAgfTsKICAgICAgICAgICAgIGxldCBzZXNzaW9uX2lkID0gYXJnc1sic2Vzc2lvbl9pZCJdLmFzX3N0cigpLm1hcChTdHJpbmc6OmZyb20pOwogICAgICAgICAgICAgbGV0IHRydXN0X3RpZXIgPSBhcmdzWyJ0cnVzdF90aWVyIl0KICAgICAgICAgICAgICAgICAuYXNfc3RyKCkKICAgICAgICAgICAgICAgICAubWFwKFRydXN0VGllcjo6ZnJvbV9zdHIpCiAgICAgICAgICAgICAgICAgLnRyYW5zcG9zZSgpPzsKLSAgICAgICAgICAgIGxldCBtdCA9IE1lbW9yeVR5cGU6OmZyb21fc3RyKG1lbW9yeV90eXBlKS51bndyYXBfb3IoTWVtb3J5VHlwZTo6U2VtYW50aWMpOwogICAgICAgICAgICAgbGV0IHN1YmplY3RfaWQgPSBhcmdzWyJzdWJqZWN0X2lkIl0KICAgICAgICAgICAgICAgICAuYXNfc3RyKCkKICAgICAgICAgICAgICAgICAubWFwKHN0cjo6dHJpbSkKZGlmZiAtLWdpdCBhL21lbW9yaWEvY3JhdGVzL21lbW9yaWEtbWNwL3Rlc3RzL3Rvb2xzX3VuaXQucnMgYi9tZW1vcmlhL2NyYXRlcy9tZW1vcmlhLW1jcC90ZXN0cy90b29sc191bml0LnJzCmluZGV4IGQ1MGZjMTkuLmI3Yjg2NjggMTAwNjQ0Ci0tLSBhL21lbW9yaWEvY3JhdGVzL21lbW9yaWEtbWNwL3Rlc3RzL3Rvb2xzX3VuaXQucnMKKysrIGIvbWVtb3JpYS9jcmF0ZXMvbWVtb3JpYS1tY3AvdGVzdHMvdG9vbHNfdW5pdC5ycwpAQCAtMTg1LDYgKzE4NSw3NSBAQCBhc3luYyBmbiB0ZXN0X3Rvb2xfbWVtb3J5X3N0b3JlX3JlamVjdHNfZW1wdHlfY29udGVudCgpIHsKICAgICBwcmludGxuISgi4pyFIHRvb2wgbWVtb3J5X3N0b3JlIHJlamVjdHMgZW1wdHkgY29udGVudCIpOwogfQogCisjW3Rva2lvOjp0ZXN0XQorYXN5bmMgZm4gdGVzdF90b29sX21lbW9yeV9zdG9yZV9yZWplY3RzX2ludmFsaWRfbWVtb3J5X3R5cGVzKCkgeworICAgIGZvciBtZW1vcnlfdHlwZSBpbiBbCisgICAgICAgIGpzb24hKCJpbnZhbGlkX3h5eiIpLAorICAgICAgICBqc29uISgiIiksCisgICAgICAgIGpzb24hKCJTRU1BTlRJQyIpLAorICAgICAgICBqc29uISg0MiksCisgICAgICAgIGpzb24hKHRydWUpLAorICAgICAgICBqc29uIShbXSksCisgICAgICAgIGpzb24hKHt9KSwKKyAgICBdIHsKKyAgICAgICAgbGV0IHN2YyA9IG1ha2Vfc2VydmljZSgpOworICAgICAgICBsZXQgYXJncyA9IGpzb24hKHsiY29udGVudCI6ICJhIHZhbGlkIGZhY3QiLCAibWVtb3J5X3R5cGUiOiBtZW1vcnlfdHlwZX0pOworICAgICAgICBsZXQgcmVzdWx0ID0gbWVtb3JpYV9tY3A6OnRvb2xzOjpjYWxsKCJtZW1vcnlfc3RvcmUiLCBhcmdzLmNsb25lKCksICZzdmMsICJ1MSIpCisgICAgICAgICAgICAuYXdhaXQKKyAgICAgICAgICAgIC51bndyYXAoKTsKKyAgICAgICAgbGV0IG1lbW9yaWVzID0gc3ZjLmxpc3RfYWN0aXZlKCJ1MSIsIDEwKS5hd2FpdC51bndyYXAoKTsKKyAgICAgICAgcHJpbnRsbiEoCisgICAgICAgICAgICAiaW52YWxpZCBtZW1vcnlfdHlwZSB7bWVtb3J5X3R5cGV9OiByZXNwb25zZT17cmVzdWx0fSwgcGVyc2lzdGVkX3R5cGVzPXs6P30iLAorICAgICAgICAgICAgbWVtb3JpZXMKKyAgICAgICAgICAgICAgICAuaXRlcigpCisgICAgICAgICAgICAgICAgLm1hcCh8bXwgbS5tZW1vcnlfdHlwZS50b19zdHJpbmcoKSkKKyAgICAgICAgICAgICAgICAuY29sbGVjdDo6PFZlYzxfPj4oKQorICAgICAgICApOworICAgICAgICBhc3NlcnRfZXEhKAorICAgICAgICAgICAgcmVzdWx0WyJpc0Vycm9yIl0sIHRydWUsCisgICAgICAgICAgICAiaW52YWxpZCB0eXBlIG11c3QgYmUgcmVqZWN0ZWQ6IHtyZXN1bHR9IgorICAgICAgICApOworICAgICAgICBhc3NlcnQhKG1lbW9yaWFfbWNwOjp0b29sczo6dmFsaWRhdGVfdG9vbF9hcmdzKCJtZW1vcnlfc3RvcmUiLCAmYXJncykuaXNfZXJyKCkpOworICAgICAgICBhc3NlcnQhKHJlc3VsdFsiY29udGVudCJdWzBdWyJ0ZXh0Il0KKyAgICAgICAgICAgIC5hc19zdHIoKQorICAgICAgICAgICAgLnVud3JhcCgpCisgICAgICAgICAgICAuY29udGFpbnMoIm1lbW9yeV90eXBlIikpOworICAgICAgICBhc3NlcnQhKG1lbW9yaWVzLmlzX2VtcHR5KCkpOworICAgIH0KK30KKworI1t0b2tpbzo6dGVzdF0KK2FzeW5jIGZuIHRlc3RfdG9vbF9tZW1vcnlfc3RvcmVfa2VlcHNfdmFsaWRfYW5kX2RlZmF1bHRfbWVtb3J5X3R5cGVzKCkgeworICAgIGxldCBtdXQgY2FzZXM6IFZlYzwoc2VyZGVfanNvbjo6VmFsdWUsICZzdHIpPiA9IG1lbW9yaWFfY29yZTo6TWVtb3J5VHlwZTo6QUxMX05BTUVTCisgICAgICAgIC5pdGVyKCkKKyAgICAgICAgLm1hcCh8bmFtZXwgeworICAgICAgICAgICAgKAorICAgICAgICAgICAgICAgIGpzb24hKHsiY29udGVudCI6ICJhIHZhbGlkIGZhY3QiLCAibWVtb3J5X3R5cGUiOiBuYW1lfSksCisgICAgICAgICAgICAgICAgKm5hbWUsCisgICAgICAgICAgICApCisgICAgICAgIH0pCisgICAgICAgIC5jb2xsZWN0KCk7CisgICAgY2FzZXMucHVzaCgoanNvbiEoeyJjb250ZW50IjogImEgdmFsaWQgZmFjdCJ9KSwgInNlbWFudGljIikpOworICAgIGNhc2VzLnB1c2goKAorICAgICAgICBqc29uISh7ImNvbnRlbnQiOiAiYSB2YWxpZCBmYWN0IiwgIm1lbW9yeV90eXBlIjogbnVsbH0pLAorICAgICAgICAic2VtYW50aWMiLAorICAgICkpOworICAgIGZvciAoYXJncywgZXhwZWN0ZWQpIGluIGNhc2VzIHsKKyAgICAgICAgbGV0IHN2YyA9IG1ha2Vfc2VydmljZSgpOworICAgICAgICBhc3NlcnQhKG1lbW9yaWFfbWNwOjp0b29sczo6dmFsaWRhdGVfdG9vbF9hcmdzKCJtZW1vcnlfc3RvcmUiLCAmYXJncykuaXNfb2soKSk7CisgICAgICAgIGxldCByZXN1bHQgPSBtZW1vcmlhX21jcDo6dG9vbHM6OmNhbGwoIm1lbW9yeV9zdG9yZSIsIGFyZ3MsICZzdmMsICJ1MSIpCisgICAgICAgICAgICAuYXdhaXQKKyAgICAgICAgICAgIC51bndyYXAoKTsKKyAgICAgICAgYXNzZXJ0X25lISgKKyAgICAgICAgICAgIHJlc3VsdFsiaXNFcnJvciJdLCB0cnVlLAorICAgICAgICAgICAgInZhbGlkIHR5cGUgbXVzdCBiZSBwcmVzZXJ2ZWQ6IHtyZXN1bHR9IgorICAgICAgICApOworICAgICAgICBsZXQgbWVtb3JpZXMgPSBzdmMubGlzdF9hY3RpdmUoInUxIiwgMTApLmF3YWl0LnVud3JhcCgpOworICAgICAgICBhc3NlcnRfZXEhKG1lbW9yaWVzLmxlbigpLCAxKTsKKyAgICAgICAgYXNzZXJ0X2VxIShtZW1vcmllc1swXS5tZW1vcnlfdHlwZS50b19zdHJpbmcoKSwgZXhwZWN0ZWQpOworICAgIH0KK30KKwogI1t0b2tpbzo6dGVzdF0KIGFzeW5jIGZuIHRlc3RfdG9vbF9tZW1vcnlfcmV0cmlldmVfZW1wdHkoKSB7CiAgICAgbGV0IHN2YyA9IG1ha2Vfc2VydmljZSgpOwo=
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+  DATABASE_URL: mysql://root:111@localhost:6001/memoria_test
+  EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_API_KEY != '' && 'openai' || 'mock' }}
+  EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+  EMBEDDING_BASE_URL: ${{ vars.EMBEDDING_BASE_URL || '' }}
+  EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || 'BAAI/bge-m3' }}
+  EMBEDDING_DIM: ${{ vars.EMBEDDING_DIM || '1024' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  LLM_BASE_URL: ${{ vars.LLM_BASE_URL || '' }}
+  LLM_MODEL: ${{ vars.LLM_MODEL || '' }}
+
+jobs:
+  check:
+    name: Check & Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Apply reviewed candidate
+        run: |
+          printf '%s' "$FIX_PATCH_B64" | base64 -d > "$RUNNER_TEMP/candidate.patch"
+          git apply "$RUNNER_TEMP/candidate.patch"
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: memoria
+          shared-key: memoria-check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format and scope guard
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2021 memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          rustfmt --edition 2021 --check memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 3
+          git diff --numstat > "$RUNNER_TEMP/numstat.txt"
+          python3 -c 'import os; s=sum(sum(map(int,x.split()[:2])) for x in open(os.environ["RUNNER_TEMP"]+"/numstat.txt")); assert s<=1000, s'
+      - name: Check & Clippy
+        run: cd memoria && cargo check && cargo clippy -- -D warnings
+
+      - name: Preserve formatted candidate
+        if: always()
+        run: |
+          mkdir -p evidence/source
+          cp memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs evidence/source/
+          git diff > evidence/candidate.patch
+          git diff --numstat > evidence/numstat.txt
+          git rev-parse HEAD > evidence/verification-head.txt
+          sha256sum evidence/source/* > evidence/sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memory-type-211-${{ github.job }}
+          path: evidence
+
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Apply reviewed candidate
+        run: |
+          printf '%s' "$FIX_PATCH_B64" | base64 -d > "$RUNNER_TEMP/candidate.patch"
+          git apply "$RUNNER_TEMP/candidate.patch"
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: memoria
+          shared-key: memoria-check
+          save-if: false
+      - name: Format and scope guard
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2021 memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          rustfmt --edition 2021 --check memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 3
+          git diff --numstat > "$RUNNER_TEMP/numstat.txt"
+          python3 -c 'import os; s=sum(sum(map(int,x.split()[:2])) for x in open(os.environ["RUNNER_TEMP"]+"/numstat.txt")); assert s<=1000, s'
+      - name: Focused public tool and dispatch regressions
+        run: |
+          cd memoria
+          cargo test --locked -p memoria-mcp --test tools_unit -- --nocapture
+          cargo test --locked -p memoria-mcp --lib server::tests::tool_errors_are_results_in_both_dispatch_paths -- --nocapture
+      - name: Unit tests
+        run: cd memoria && cargo test --lib -p memoria-api -p memoria-core -p memoria-service -p memoria-mcp
+
+      - name: Preserve formatted candidate
+        if: always()
+        run: |
+          mkdir -p evidence/source
+          cp memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs evidence/source/
+          git diff > evidence/candidate.patch
+          git diff --numstat > evidence/numstat.txt
+          git rev-parse HEAD > evidence/verification-head.txt
+          sha256sum evidence/source/* > evidence/sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memory-type-211-${{ github.job }}
+          path: evidence
+
+  test-db:
+    name: DB Tests
+    runs-on: ubuntu-latest
+    needs: [check, test-unit]
+    services:
+      matrixone:
+        image: matrixorigin/matrixone:latest
+        ports:
+          - 6001:6001
+        options: --memory=4g
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Apply reviewed candidate
+        run: |
+          printf '%s' "$FIX_PATCH_B64" | base64 -d > "$RUNNER_TEMP/candidate.patch"
+          git apply "$RUNNER_TEMP/candidate.patch"
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: memoria
+          shared-key: memoria-check
+          save-if: false
+      - name: Format and scope guard
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2021 memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          rustfmt --edition 2021 --check memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 3
+          git diff --numstat > "$RUNNER_TEMP/numstat.txt"
+          python3 -c 'import os; s=sum(sum(map(int,x.split()[:2])) for x in open(os.environ["RUNNER_TEMP"]+"/numstat.txt")); assert s<=1000, s'
+      - name: Wait for MatrixOne
+        run: |
+          for i in $(seq 1 30); do
+            bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null && break
+            echo "Waiting... ($i/30)" && sleep 3
+          done
+      - name: All tests
+        run: cd memoria && cargo test -- --test-threads=1
+      - name: Restore transaction failure regression
+        run: cd memoria && cargo test -p memoria-git --lib failed_insert_rolls_back_preceding_delete -- --ignored --nocapture
+      - name: Branch capability probe cleanup regression
+        run: cd memoria && cargo test -p memoria-storage --lib materialized_probe_cleanup_preserves_unrelated_tables -- --ignored --nocapture
+      - name: Offline restore cleanup regressions
+        run: cd memoria && cargo test -p memoria-git --example restore_cleanup -- --include-ignored --nocapture
+
+      - name: Preserve formatted candidate
+        if: always()
+        run: |
+          mkdir -p evidence/source
+          cp memoria/crates/memoria-mcp/src/tools.rs memoria/crates/memoria-mcp/src/server.rs memoria/crates/memoria-mcp/tests/tools_unit.rs evidence/source/
+          git diff > evidence/candidate.patch
+          git diff --numstat > evidence/numstat.txt
+          git rev-parse HEAD > evidence/verification-head.txt
+          sha256sum evidence/source/* > evidence/sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memory-type-211-${{ github.job }}
+          path: evidence
