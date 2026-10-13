@@ -332,6 +332,7 @@ mod tests {
     }
 
     #[test]
+    // Regression for opaque numeric identifiers that resemble phone numbers.
     fn unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers() {
         for text in [
             "see https://github.com/org/repo/issues/1#issuecomment-4345955198",
