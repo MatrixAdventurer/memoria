@@ -97,7 +97,7 @@ jobs:
         run: |
           set +e
           cd memoria
-          cargo test -p memoria-core unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers -- --exact --nocapture 2>&1 | tee ../baseline.log
+          cargo test -p memoria-core unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers -- --nocapture 2>&1 | tee ../baseline.log
           status=${PIPESTATUS[0]}
           set -e
           test "$status" -ne 0
@@ -120,7 +120,7 @@ jobs:
           cargo fmt --all
       - name: Focused regression tests
         working-directory: memoria
-        run: cargo test -p memoria-core unformatted_numeric_identifiers_are_not_redacted_as_phone_numbers phone_redaction_keeps_supported_separator_forms -- --nocapture
+        run: cargo test -p memoria-core sensitivity::tests:: -- --nocapture
       - name: Formatting
         working-directory: memoria
         run: cargo fmt --all -- --check
