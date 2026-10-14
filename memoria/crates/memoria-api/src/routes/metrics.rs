@@ -110,9 +110,11 @@ async fn collect_metrics(state: &AppState) -> Result<Arc<String>, String> {
     // ── Governance last run ───────────────────────────────────────────────
     // Every scheduled governance run upserts its outcome (success or primary
     // failure) into the shared runtime state with `updated_at = NOW()`.
-    // UNIX_TIMESTAMP reads it back in the session time zone NOW() wrote it in.
+    // Scope to governance tasks only: the same table also stores vector-index
+    // rebuild bookkeeping (`task = 'rebuild'`), which must not inflate this
+    // staleness gauge. UNIX_TIMESTAMP matches the session time zone NOW() used.
     let last_gov: Option<i64> = sqlx::query_scalar(
-        "SELECT CAST(UNIX_TIMESTAMP(MAX(updated_at)) AS SIGNED) FROM mem_governance_runtime_state",
+        "SELECT CAST(UNIX_TIMESTAMP(MAX(updated_at)) AS SIGNED)          FROM mem_governance_runtime_state          WHERE `task` IN ('hourly', 'daily', 'weekly')",
     )
     .fetch_one(shared_pool)
     .await
