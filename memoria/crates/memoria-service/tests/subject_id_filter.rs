@@ -655,7 +655,8 @@ async fn test_correction_preserves_business_metadata_without_receipt() {
             .await
             .unwrap();
         assert_eq!(
-            corrected.extra_metadata, expected,
+            corrected.extra_metadata,
+            expected,
             "business metadata must survive correction"
         );
         let historical = store
@@ -664,7 +665,8 @@ async fn test_correction_preserves_business_metadata_without_receipt() {
             .unwrap()
             .unwrap();
         assert_eq!(
-            historical.extra_metadata, metadata,
+            historical.extra_metadata,
+            metadata,
             "original metadata must remain intact"
         );
         assert!(!historical.is_active);

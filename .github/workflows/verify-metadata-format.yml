@@ -23,11 +23,14 @@ jobs:
               "memoria/crates/memoria-api/tests/api_e2e.rs",
               "memoria/crates/memoria-service/tests/subject_id_filter.rs",
           ]
+          failed = False
           for index, path in enumerate(paths):
               baseline = subprocess.check_output(["git", "show", "cb38fec1cf15a3be30f8afccff31c0506bbe41d5:" + path]).decode()
               candidate = Path(path).read_text()
               assert candidate.startswith(baseline), "expected appended regressions only"
               fragment = Path(os.environ["RUNNER_TEMP"]) / f"metadata_added_{index}.rs"
               fragment.write_text(candidate[len(baseline):].lstrip("\n"))
-              subprocess.run(["rustfmt", "--check", "--edition", "2021", str(fragment)], check=True)
+              result = subprocess.run(["rustfmt", "--check", "--edition", "2021", str(fragment)])
+              failed = failed or result.returncode != 0
+          raise SystemExit(1 if failed else 0)
           PY

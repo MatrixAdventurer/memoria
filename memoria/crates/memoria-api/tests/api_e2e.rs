@@ -11269,11 +11269,7 @@ async fn assert_correction_preserves_metadata(by_query: bool) {
     let stored: Value = response.json().await.unwrap();
     let mut id = stored["memory_id"].as_str().unwrap().to_string();
     let mut content = stored["content"].as_str().unwrap().to_string();
-    let persisted = service
-        .get_for_user(&uid, &id)
-        .await
-        .unwrap()
-        .unwrap();
+    let persisted = service.get_for_user(&uid, &id).await.unwrap().unwrap();
     assert!(persisted
         .extra_metadata
         .as_ref()
@@ -11326,18 +11322,15 @@ async fn assert_correction_preserves_metadata(by_query: bool) {
         let found: Value = response.json().await.unwrap();
         let items = found["items"].as_array().unwrap();
         assert_eq!(
-            items.len(), 1,
+            items.len(),
+            1,
             "correction must remain discoverable by business metadata"
         );
         assert_eq!(items[0]["memory_id"], id);
         assert_eq!(items[0]["content"], replacement);
         assert_eq!(items[0]["extra_metadata"], metadata);
         assert_eq!(corrected["extra_metadata"], metadata);
-        let persisted = service
-            .get_for_user(&uid, &id)
-            .await
-            .unwrap()
-            .unwrap();
+        let persisted = service.get_for_user(&uid, &id).await.unwrap().unwrap();
         assert!(!persisted
             .extra_metadata
             .as_ref()
