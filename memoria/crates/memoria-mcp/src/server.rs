@@ -830,15 +830,35 @@ mod tests {
                 -32602
             );
         }
-        let success = dispatch(
-            "tools/call",
-            Some(json!({"name":"memory_capabilities"})),
-            &embedded,
-            "test",
-        )
-        .await
-        .unwrap();
-        assert!(!crate::tool_result::is_error(&success));
+        let call = json!({"name":"memory_capabilities"});
+        for (mode, result) in [
+            ("embedded", dispatch("tools/call", Some(call.clone()), &embedded, "test").await),
+            ("remote", dispatch("tools/call", Some(call.clone()), &remote, "test").await),
+            (
+                "http",
+                super::dispatch_http(
+                    "tools/call".into(),
+                    Some(call),
+                    service,
+                    git,
+                    "test".into(),
+                )
+                .await,
+            ),
+        ] {
+            let result = result.expect("memory_capabilities succeeds without storage");
+            assert!(!crate::tool_result::is_error(&result));
+            let text = result["content"][0]["text"].as_str().expect("MCP text");
+            let payload: serde_json::Value =
+                serde_json::from_str(text).expect("capability discovery is structured JSON");
+            let tools = payload["tools"].as_array().expect("tools array");
+            assert!(tools.iter().any(|tool| tool["name"] == "memory_store"));
+            assert!(tools.iter().all(|tool| tool["name"] != "memory_rebuild_index"));
+            assert!(payload["guidance"].as_str().unwrap().contains("T1 (Verified)"));
+            if mode == "remote" {
+                assert_eq!(payload["mode"], "remote");
+            }
+        }
     }
 
     /// Oversized memory_store content (service-layer MemoriaError::Validation,
