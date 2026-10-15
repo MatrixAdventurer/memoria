@@ -612,3 +612,72 @@ async fn test_memory_types_excludes_other_types() {
     }
     println!("✅ memory_types excludes other types");
 }
+
+#[tokio::test]
+async fn test_correction_preserves_business_metadata_without_receipt() {
+    use memoria_core::{interfaces::MemoryStore, STORE_REQUEST_HASH_FIELD};
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    let store = Arc::new(MapStore::default());
+    let svc = MemoryService::new(store.clone(), Some(Arc::new(StableEmbedder)), None);
+    let metadata = HashMap::from([
+        ("scene".to_string(), json!("仓库")),
+        (
+            "nested".to_string(),
+            json!({"tags": [1, true, null, "中文"]}),
+        ),
+        (
+            STORE_REQUEST_HASH_FIELD.to_string(),
+            json!("original-fingerprint"),
+        ),
+    ]);
+    for metadata in [Some(metadata), None, Some(HashMap::new())] {
+        let mut original = svc
+            .store_memory(
+                "metadata-user",
+                "original tagged memory",
+                MemoryType::Semantic,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        original.extra_metadata = metadata.clone();
+        store.update(&original).await.unwrap();
+        let expected = metadata.clone().map(|mut metadata| {
+            metadata.remove(STORE_REQUEST_HASH_FIELD);
+            metadata
+        });
+        let corrected = svc
+            .correct(
+                "metadata-user",
+                &original.memory_id,
+                "corrected tagged memory",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            corrected.extra_metadata, expected,
+            "business metadata must survive correction"
+        );
+        let historical = store
+            .get_including_inactive(&original.memory_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            historical.extra_metadata, metadata,
+            "original metadata must remain intact"
+        );
+        assert!(!historical.is_active);
+        assert_eq!(
+            historical.superseded_by.as_deref(),
+            Some(corrected.memory_id.as_str())
+        );
+    }
+}

@@ -11242,3 +11242,109 @@ async fn test_mcp_notifications_initialized_no_error() {
     );
     println!("✅ POST /mcp notifications/initialized → 204 No Content");
 }
+
+async fn assert_correction_preserves_metadata(by_query: bool) {
+    let (base, client, server) = spawn_server().await;
+    let uid = uid();
+    let service = server.service();
+    let metadata = json!({
+        "scene": "仓库",
+        "attempt": 2,
+        "verified": true,
+        "nested": {"tags": [1, true, null, "中文"]}
+    });
+    let request = json!({
+        "content": "original tagged inventory memory",
+        "extra_metadata": metadata,
+        "idempotency_key": "metadata-original"
+    });
+    let response = client
+        .post(format!("{base}/v1/memories"))
+        .header("X-User-Id", &uid)
+        .json(&request)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 201);
+    let stored: Value = response.json().await.unwrap();
+    let mut id = stored["memory_id"].as_str().unwrap().to_string();
+    let mut content = stored["content"].as_str().unwrap().to_string();
+    let persisted = service.get_for_user(&uid, &id).await.unwrap().unwrap();
+    assert!(persisted
+        .extra_metadata
+        .as_ref()
+        .unwrap()
+        .contains_key(memoria_core::STORE_REQUEST_HASH_FIELD));
+    let query = json!({"extra_metadata_filter": {"scene": "仓库", "attempt": 2, "verified": true}});
+    let response = client
+        .post(format!("{base}/v1/memories/query"))
+        .header("X-User-Id", &uid)
+        .json(&query)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let before: Value = response.json().await.unwrap();
+    assert_eq!(before["items"].as_array().unwrap().len(), 1);
+    for replacement in [
+        "corrected tagged inventory memory",
+        "final tagged inventory memory",
+    ] {
+        let response = if by_query {
+            client
+                .post(format!("{base}/v1/memories/correct"))
+                .header("X-User-Id", &uid)
+                .json(&json!({"query": content, "new_content": replacement}))
+                .send()
+                .await
+                .unwrap()
+        } else {
+            client
+                .put(format!("{base}/v1/memories/{id}/correct"))
+                .header("X-User-Id", &uid)
+                .json(&json!({"new_content": replacement}))
+                .send()
+                .await
+                .unwrap()
+        };
+        assert_eq!(response.status(), 200);
+        let corrected: Value = response.json().await.unwrap();
+        id = corrected["memory_id"].as_str().unwrap().to_string();
+        content = replacement.to_string();
+        let response = client
+            .post(format!("{base}/v1/memories/query"))
+            .header("X-User-Id", &uid)
+            .json(&query)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let found: Value = response.json().await.unwrap();
+        let items = found["items"].as_array().unwrap();
+        assert_eq!(
+            items.len(),
+            1,
+            "correction must remain discoverable by business metadata"
+        );
+        assert_eq!(items[0]["memory_id"], id);
+        assert_eq!(items[0]["content"], replacement);
+        assert_eq!(items[0]["extra_metadata"], metadata);
+        assert_eq!(corrected["extra_metadata"], metadata);
+        let persisted = service.get_for_user(&uid, &id).await.unwrap().unwrap();
+        assert!(!persisted
+            .extra_metadata
+            .as_ref()
+            .unwrap()
+            .contains_key(memoria_core::STORE_REQUEST_HASH_FIELD));
+    }
+}
+
+#[tokio::test]
+async fn test_correction_metadata_by_id_remains_queryable() {
+    assert_correction_preserves_metadata(false).await;
+}
+
+#[tokio::test]
+async fn test_correction_metadata_by_query_remains_queryable() {
+    assert_correction_preserves_metadata(true).await;
+}
