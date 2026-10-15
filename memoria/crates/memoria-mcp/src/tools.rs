@@ -195,12 +195,8 @@ const TRUST_TIER_DESCRIPTION: &str = concat!(
     "T4 = speculative, reflective, or otherwise unverified hypothesis."
 );
 
-pub(crate) const MEMORY_CAPABILITIES_TEXT: &str = concat!(
-    "Available tools: memory_store, memory_retrieve, memory_search, ",
-    "memory_correct, memory_purge, memory_profile, memory_list, ",
-    "memory_capabilities, memory_governance, memory_consolidate, ",
-    "memory_reflect, memory_feedback",
-    "\n\nmemory_store trust_tier guide:",
+const MEMORY_CAPABILITIES_GUIDANCE: &str = concat!(
+    "memory_store trust_tier guide:",
     "\n- T1 (Verified): directly stated or explicitly confirmed facts, preferences, or decisions.",
     "\n- T2 (Curated): corrected or manually curated memory replacing an older record.",
     "\n- T3 (Inferred): summaries, extracted patterns, or soft conclusions not explicitly confirmed. Prefer T3 if unsure.",
@@ -208,10 +204,43 @@ pub(crate) const MEMORY_CAPABILITIES_TEXT: &str = concat!(
     "\nUse exact values T1/T2/T3/T4; natural-language labels like 'verified' are invalid."
 );
 
-// Return the MCP envelope for the public capability-discovery tool.
-// Extracted so its response contract can be validated without a live database.
-fn capabilities_result() -> Value {
-    mcp_text(MEMORY_CAPABILITIES_TEXT)
+// The capabilities helper intentionally excludes operational/debug tools from
+// discovery, matching its historical public tool set. Describe each tool from
+// the same canonical metadata exposed by MCP tools/list.
+pub(crate) fn capabilities_payload() -> Value {
+    const PUBLIC_TOOLS: &[&str] = &[
+        "memory_store",
+        "memory_retrieve",
+        "memory_search",
+        "memory_correct",
+        "memory_purge",
+        "memory_profile",
+        "memory_list",
+        "memory_capabilities",
+        "memory_governance",
+        "memory_consolidate",
+        "memory_reflect",
+        "memory_feedback",
+    ];
+    let catalog = list();
+    let tools = catalog
+        .as_array()
+        .expect("tools/list metadata must be an array")
+        .iter()
+        .filter(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| PUBLIC_TOOLS.contains(&name))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    json!({"tools": tools, "guidance": MEMORY_CAPABILITIES_GUIDANCE})
+}
+
+// MCP 2024-11-05 permits a text block containing JSON. Newer structuredContent
+// is not advertised by this server, so the JSON text is the portable boundary.
+pub(crate) fn capabilities_result() -> Value {
+    mcp_text(&capabilities_payload().to_string())
 }
 
 pub fn list() -> Value {
