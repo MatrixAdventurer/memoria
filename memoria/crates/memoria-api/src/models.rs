@@ -10,6 +10,9 @@ use std::str::FromStr;
 
 #[derive(Deserialize)]
 pub struct StoreRequest {
+    /// Stable owner/branch-scoped write identity; retries return the same receipt.
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
     pub content: String,
     #[serde(default = "default_memory_type")]
     pub memory_type: String,
@@ -457,7 +460,10 @@ pub struct MemoryResponse {
 }
 
 impl From<Memory> for MemoryResponse {
-    fn from(m: Memory) -> Self {
+    fn from(mut m: Memory) -> Self {
+        if let Some(metadata) = m.extra_metadata.as_mut() {
+            metadata.remove(memoria_core::STORE_REQUEST_HASH_FIELD);
+        }
         Self {
             memory_id: m.memory_id,
             user_id: m.user_id,
