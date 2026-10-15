@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 from ..models import ApplyResult, Branch
 
@@ -13,6 +14,15 @@ if TYPE_CHECKING:
 
 def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
+
+
+def _branch_path(name: str, suffix: str = "") -> str:
+    # Display names are data, not URL syntax. Preserve literal percent signs
+    # and dot-only names that httpx would otherwise normalize as navigation.
+    encoded = quote(name, safe="")
+    if name in {".", ".."}:
+        encoded = "%2E" * len(name)
+    return f"/v1/branches/{encoded}{suffix}"
 
 
 class BranchesResource:
@@ -36,11 +46,11 @@ class BranchesResource:
         return [Branch.from_dict(b) for b in items]
 
     def checkout(self, name: str) -> None:
-        self._client._request("POST", f"/v1/branches/{name}/checkout", json={})
+        self._client._request("POST", _branch_path(name, "/checkout"), json={})
 
     def diff(self, name: str) -> dict[str, Any]:
         """Return high-level diff statistics (no pagination)."""
-        return cast(dict[str, Any], self._client._request("GET", f"/v1/branches/{name}/diff"))
+        return cast(dict[str, Any], self._client._request("GET", _branch_path(name, "/diff")))
 
     def diff_items(
         self,
@@ -53,14 +63,14 @@ class BranchesResource:
         params = _strip_none({"limit": limit, "cursor": cursor})
         return cast(
             dict[str, Any],
-            self._client._request("GET", f"/v1/branches/{name}/diff-items", params=params),
+            self._client._request("GET", _branch_path(name, "/diff-items"), params=params),
         )
 
     def merge(self, name: str, *, strategy: str = "accept") -> None:
-        self._client._request("POST", f"/v1/branches/{name}/merge", json={"strategy": strategy})
+        self._client._request("POST", _branch_path(name, "/merge"), json={"strategy": strategy})
 
     def delete(self, name: str) -> None:
-        self._client._request("DELETE", f"/v1/branches/{name}")
+        self._client._request("DELETE", _branch_path(name))
 
     def apply(
         self,
@@ -79,7 +89,7 @@ class BranchesResource:
                 "accept_branch_conflicts": accept_branch_conflicts,
             }
         )
-        data = self._client._request("POST", f"/v1/branches/{name}/apply", json=body)
+        data = self._client._request("POST", _branch_path(name, "/apply"), json=body)
         return ApplyResult.from_dict(data)
 
     def pick(
@@ -101,7 +111,7 @@ class BranchesResource:
         )
         return cast(
             dict[str, Any],
-            self._client._request("POST", f"/v1/branches/{name}/pick", json=body),
+            self._client._request("POST", _branch_path(name, "/pick"), json=body),
         )
 
 
@@ -125,11 +135,11 @@ class AsyncBranchesResource:
         return [Branch.from_dict(b) for b in items]
 
     async def checkout(self, name: str) -> None:
-        await self._client._arequest("POST", f"/v1/branches/{name}/checkout", json={})
+        await self._client._arequest("POST", _branch_path(name, "/checkout"), json={})
 
     async def diff(self, name: str) -> dict[str, Any]:
         return cast(
-            dict[str, Any], await self._client._arequest("GET", f"/v1/branches/{name}/diff")
+            dict[str, Any], await self._client._arequest("GET", _branch_path(name, "/diff"))
         )
 
     async def diff_items(
@@ -142,16 +152,16 @@ class AsyncBranchesResource:
         params = _strip_none({"limit": limit, "cursor": cursor})
         return cast(
             dict[str, Any],
-            await self._client._arequest("GET", f"/v1/branches/{name}/diff-items", params=params),
+            await self._client._arequest("GET", _branch_path(name, "/diff-items"), params=params),
         )
 
     async def merge(self, name: str, *, strategy: str = "accept") -> None:
         await self._client._arequest(
-            "POST", f"/v1/branches/{name}/merge", json={"strategy": strategy}
+            "POST", _branch_path(name, "/merge"), json={"strategy": strategy}
         )
 
     async def delete(self, name: str) -> None:
-        await self._client._arequest("DELETE", f"/v1/branches/{name}")
+        await self._client._arequest("DELETE", _branch_path(name))
 
     async def apply(
         self,
@@ -170,7 +180,7 @@ class AsyncBranchesResource:
                 "accept_branch_conflicts": accept_branch_conflicts,
             }
         )
-        data = await self._client._arequest("POST", f"/v1/branches/{name}/apply", json=body)
+        data = await self._client._arequest("POST", _branch_path(name, "/apply"), json=body)
         return ApplyResult.from_dict(data)
 
     async def pick(
@@ -192,5 +202,6 @@ class AsyncBranchesResource:
         )
         return cast(
             dict[str, Any],
-            await self._client._arequest("POST", f"/v1/branches/{name}/pick", json=body),
+            await self._client._arequest("POST", _branch_path(name, "/pick"), json=body),
         )
+
