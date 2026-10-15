@@ -1,8 +1,8 @@
-name: Test
+name: Verify 311 Python branch path gates
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, verify/311-python-branch-path]
   pull_request:
     branches: [main, develop]
 
