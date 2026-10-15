@@ -1,8 +1,8 @@
-name: Test
+name: Verify snapshot UTF-8 preview gates
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, verify/snapshot-utf8-preview]
   pull_request:
     branches: [main, develop]
 
@@ -74,6 +74,24 @@ jobs:
             bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null && break
             echo "Waiting... ($i/30)" && sleep 3
           done
+      - name: Snapshot preview baseline regression
+        shell: bash
+        run: |
+          file=memoria/crates/memoria-api/src/routes/snapshots.rs
+          cp "$file" "$RUNNER_TEMP/snapshots-fixed.rs"
+          trap 'cp "$RUNNER_TEMP/snapshots-fixed.rs" "$file"' EXIT
+          git fetch --no-tags --depth=1 origin cb38fec1cf15a3be30f8afccff31c0506bbe41d5
+          git show cb38fec1cf15a3be30f8afccff31c0506bbe41d5:memoria/crates/memoria-api/src/routes/snapshots.rs > "$file"
+          set +e
+          (cd memoria && cargo test -p memoria-api --test api_e2e test_snapshot_detail_utf8 -- --test-threads=1 --nocapture) > "$RUNNER_TEMP/snapshot-red.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/snapshot-red.log"
+          test "$result" -ne 0
+          grep -q 'byte index .* is not a char boundary' "$RUNNER_TEMP/snapshot-red.log"
+          grep -q '0 passed; 3 failed' "$RUNNER_TEMP/snapshot-red.log"
+      - name: Snapshot preview fixed regressions
+        run: cd memoria && cargo test -p memoria-api --test api_e2e test_snapshot_detail_utf8 -- --test-threads=1 --nocapture
       - name: All tests
         run: cd memoria && cargo test -- --test-threads=1
       - name: Restore transaction failure regression
