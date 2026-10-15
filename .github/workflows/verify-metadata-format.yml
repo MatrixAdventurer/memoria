@@ -1,0 +1,33 @@
+name: Check added metadata regression formatting
+on:
+  push:
+    branches: [verify/correction-metadata-format]
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - name: Check added test fragments
+        run: |
+          git fetch --no-tags --depth=1 origin cb38fec1cf15a3be30f8afccff31c0506bbe41d5
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          paths = [
+              "memoria/crates/memoria-api/tests/api_e2e.rs",
+              "memoria/crates/memoria-service/tests/subject_id_filter.rs",
+          ]
+          for index, path in enumerate(paths):
+              baseline = subprocess.check_output(["git", "show", "cb38fec1cf15a3be30f8afccff31c0506bbe41d5:" + path]).decode()
+              candidate = Path(path).read_text()
+              assert candidate.startswith(baseline), "expected appended regressions only"
+              fragment = Path(os.environ["RUNNER_TEMP"]) / f"metadata_added_{index}.rs"
+              fragment.write_text(candidate[len(baseline):].lstrip("\n"))
+              subprocess.run(["rustfmt", "--check", "--edition", "2021", str(fragment)], check=True)
+          PY
