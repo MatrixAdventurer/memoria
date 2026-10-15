@@ -1,8 +1,8 @@
-name: Test
+name: Verify correction content limit complete gates
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, verify/correction-content-limit-v2]
   pull_request:
     branches: [main, develop]
 
@@ -74,6 +74,27 @@ jobs:
             bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null && break
             echo "Waiting... ($i/30)" && sleep 3
           done
+      - name: Correction REST baseline regressions
+        shell: bash
+        run: |
+          service=memoria/crates/memoria-service/src/service.rs
+          route=memoria/crates/memoria-api/src/routes/memory.rs
+          cp "$service" "$RUNNER_TEMP/service-fixed.rs"
+          cp "$route" "$RUNNER_TEMP/route-fixed.rs"
+          trap 'cp "$RUNNER_TEMP/service-fixed.rs" "$service"; cp "$RUNNER_TEMP/route-fixed.rs" "$route"' EXIT
+          git fetch --no-tags --depth=1 origin cb38fec1cf15a3be30f8afccff31c0506bbe41d5
+          git show cb38fec1cf15a3be30f8afccff31c0506bbe41d5:memoria/crates/memoria-service/src/service.rs > "$service"
+          git show cb38fec1cf15a3be30f8afccff31c0506bbe41d5:memoria/crates/memoria-api/src/routes/memory.rs > "$route"
+          set +e
+          (cd memoria && cargo test -p memoria-api --test api_e2e test_correct_content_length -- --test-threads=1 --nocapture) > "$RUNNER_TEMP/correction-red.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/correction-red.log"
+          test "$result" -ne 0
+          grep -q 'oversized correction:' "$RUNNER_TEMP/correction-red.log"
+          grep -q '0 passed; 2 failed' "$RUNNER_TEMP/correction-red.log"
+      - name: Correction REST fixed regressions
+        run: cd memoria && cargo test -p memoria-api --test api_e2e test_correct_content_length -- --test-threads=1 --nocapture
       - name: All tests
         run: cd memoria && cargo test -- --test-threads=1
       - name: Restore transaction failure regression
