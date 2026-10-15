@@ -1630,7 +1630,11 @@ mod tests {
             "memory_reflect",
             "memory_feedback",
         ];
-        assert_eq!(tools.len(), expected.len(), "no public tools omitted or duplicated");
+        assert_eq!(
+            tools.len(),
+            expected.len(),
+            "no public tools omitted or duplicated"
+        );
         let advertised = list();
         let advertised = advertised.as_array().expect("tools/list entries");
         for name in expected {
@@ -1654,7 +1658,9 @@ mod tests {
             "memory_observe",
         ] {
             assert!(
-                tools.iter().all(|tool| tool["name"].as_str() != Some(hidden)),
+                tools
+                    .iter()
+                    .all(|tool| tool["name"].as_str() != Some(hidden)),
                 "hidden tool leaked: {hidden}"
             );
         }
@@ -1664,7 +1670,6 @@ mod tests {
         assert!(guide.contains("Prefer T3 if unsure"));
         assert!(guide.contains("natural-language labels like 'verified' are invalid"));
     }
-
 
     #[test]
     fn missing_session_id_preserves_message_and_input_classification() {
