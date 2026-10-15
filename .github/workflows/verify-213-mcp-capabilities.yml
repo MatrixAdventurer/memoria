@@ -1,0 +1,104 @@
+name: Verify MCP capabilities JSON
+on:
+  push:
+    branches:
+      - verify/213-capabilities-structure-20261016
+permissions:
+  contents: read
+jobs:
+  red-green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    env:
+      CARGO_TERM_COLOR: always
+      SQLX_OFFLINE: "true"
+      DATABASE_URL: mysql://root:111@localhost:6001/memoria_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: memoria
+          shared-key: verify-213-mcp
+      - name: Verify three-file product diff
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          git rev-parse HEAD > evidence/sha.txt
+          git diff cb38fec1cf15a3be30f8afccff31c0506bbe41d5 HEAD -- \
+            memoria/crates/memoria-mcp/src/tools.rs \
+            memoria/crates/memoria-mcp/src/remote.rs \
+            memoria/crates/memoria-mcp/src/server.rs > evidence/product.patch
+          git diff --check cb38fec1cf15a3be30f8afccff31c0506bbe41d5 HEAD
+          cp memoria/crates/memoria-mcp/src/tools.rs "$RUNNER_TEMP/green-tools.rs"
+          cp memoria/crates/memoria-mcp/src/remote.rs "$RUNNER_TEMP/green-remote.rs"
+      - name: RED - existing unstructured public remote and HTTP response
+        run: |
+          set -euo pipefail
+          git show 061a7d30af6490089a02e4134e094d9827dd297c:memoria/crates/memoria-mcp/src/tools.rs > memoria/crates/memoria-mcp/src/tools.rs
+          git show 061a7d30af6490089a02e4134e094d9827dd297c:memoria/crates/memoria-mcp/src/remote.rs > memoria/crates/memoria-mcp/src/remote.rs
+          cd memoria
+          for spec in \
+            capabilities_result_is_machine_readable_and_exposes_only_public_tools \
+            remote_capabilities_are_parseable_json_with_mode_metadata \
+            tool_errors_are_results_in_both_dispatch_paths; do
+            code=0
+            cargo test --locked -p memoria-mcp --lib "$spec" -- --nocapture > "../evidence/red-$spec.log" 2>&1 || code=$?
+            cat "../evidence/red-$spec.log"
+            test "$code" -ne 0
+            grep -F 'panicked at' "../evidence/red-$spec.log"
+            grep -F 'FAILED' "../evidence/red-$spec.log"
+            grep -F "$spec" "../evidence/red-$spec.log"
+          done
+      - name: Restore final candidate from GitHub HEAD
+        run: |
+          set -euo pipefail
+          git show HEAD:memoria/crates/memoria-mcp/src/tools.rs > memoria/crates/memoria-mcp/src/tools.rs
+          git show HEAD:memoria/crates/memoria-mcp/src/remote.rs > memoria/crates/memoria-mcp/src/remote.rs
+          cmp "$RUNNER_TEMP/green-tools.rs" memoria/crates/memoria-mcp/src/tools.rs
+          cmp "$RUNNER_TEMP/green-remote.rs" memoria/crates/memoria-mcp/src/remote.rs
+          git diff --exit-code
+      - name: GREEN - public remote and HTTP regressions
+        run: |
+          set -euo pipefail
+          cd memoria
+          for spec in \
+            capabilities_result_is_machine_readable_and_exposes_only_public_tools \
+            remote_capabilities_are_parseable_json_with_mode_metadata \
+            tool_errors_are_results_in_both_dispatch_paths; do
+            cargo test --locked -p memoria-mcp --lib "$spec" -- --nocapture 2>&1 | tee "../evidence/green-$spec.log"
+            grep -F '1 passed' "../evidence/green-$spec.log"
+          done
+      - name: GREEN - entire memoria-mcp library suite
+        run: |
+          set -euo pipefail
+          cd memoria
+          cargo test --locked -p memoria-mcp --lib 2>&1 | tee ../evidence/green-lib.log
+      - name: Format check
+        run: |
+          set -euo pipefail
+          cd memoria
+          cargo fmt --all -- --check > ../evidence/fmt.log 2>&1 || { cat ../evidence/fmt.log; exit 1; }
+      - name: Clippy on changed crate
+        run: |
+          set -euo pipefail
+          cd memoria
+          cargo clippy --locked --package memoria-mcp --all-targets -- -D warnings 2>&1 | tee ../evidence/clippy.log
+      - name: Preserve final product evidence
+        if: always()
+        run: |
+          mkdir -p evidence/product
+          cp memoria/crates/memoria-mcp/src/tools.rs evidence/product/
+          cp memoria/crates/memoria-mcp/src/remote.rs evidence/product/
+          cp memoria/crates/memoria-mcp/src/server.rs evidence/product/
+          sha256sum evidence/product/* > evidence/sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memoria-213-capabilities-evidence
+          path: evidence
