@@ -1053,14 +1053,12 @@ mod tests {
             .call("memory_capabilities", json!({}))
             .await
             .expect("local capability discovery does not require a remote API");
-        let text = result["content"][0]["text"]
-            .as_str()
-            .expect("text content");
+        let text = result["content"][0]["text"].as_str().expect("text content");
         let payload: Value = serde_json::from_str(text).expect("structured JSON");
         assert_eq!(payload["mode"], "remote");
-        assert!(payload["tools"].as_array().is_some_and(|tools| {
-            tools.iter().any(|tool| tool["name"] == "memory_store")
-        }));
+        assert!(payload["tools"]
+            .as_array()
+            .is_some_and(|tools| { tools.iter().any(|tool| tool["name"] == "memory_store") }));
     }
 
     use axum::{
