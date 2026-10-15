@@ -623,7 +623,10 @@ async fn test_correction_preserves_business_metadata_without_receipt() {
     let svc = MemoryService::new(store.clone(), Some(Arc::new(StableEmbedder)), None);
     let metadata = HashMap::from([
         ("scene".to_string(), json!("仓库")),
-        ("nested".to_string(), json!({"tags": [1, true, null, "中文"]})),
+        (
+            "nested".to_string(),
+            json!({"tags": [1, true, null, "中文"]}),
+        ),
         (
             STORE_REQUEST_HASH_FIELD.to_string(),
             json!("original-fingerprint"),
@@ -651,12 +654,15 @@ async fn test_correction_preserves_business_metadata_without_receipt() {
             metadata
         });
         let corrected = svc
-            .correct("metadata-user", &original.memory_id, "corrected tagged memory")
+            .correct(
+                "metadata-user",
+                &original.memory_id,
+                "corrected tagged memory",
+            )
             .await
             .unwrap();
         assert_eq!(
-            corrected.extra_metadata,
-            expected,
+            corrected.extra_metadata, expected,
             "business metadata must survive correction"
         );
         let historical = store
@@ -665,8 +671,7 @@ async fn test_correction_preserves_business_metadata_without_receipt() {
             .unwrap()
             .unwrap();
         assert_eq!(
-            historical.extra_metadata,
-            metadata,
+            historical.extra_metadata, metadata,
             "original metadata must remain intact"
         );
         assert!(!historical.is_active);
