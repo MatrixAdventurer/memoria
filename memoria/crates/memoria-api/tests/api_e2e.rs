@@ -11292,6 +11292,27 @@ async fn assert_correct_content_length(by_query: bool) {
         assert_eq!(items[0]["memory_id"], id);
         assert_eq!(items[0]["content"], original);
     }
+    let content = "x".repeat(32_768);
+    let response = if by_query {
+        client
+            .post(format!("{base}/v1/memories/correct"))
+            .header("X-User-Id", &uid)
+            .json(&json!({"query": original, "new_content": content}))
+            .send()
+            .await
+            .unwrap()
+    } else {
+        client
+            .put(format!("{base}/v1/memories/{id}/correct"))
+            .header("X-User-Id", &uid)
+            .json(&json!({"new_content": content}))
+            .send()
+            .await
+            .unwrap()
+    };
+    assert_eq!(response.status(), 200, "exactly 32 KiB remains valid");
+    let corrected: Value = response.json().await.unwrap();
+    assert_eq!(corrected["content"], content);
 }
 
 #[tokio::test]
