@@ -11270,10 +11270,10 @@ async fn assert_correction_preserves_metadata(by_query: bool) {
     let mut id = stored["memory_id"].as_str().unwrap().to_string();
     let mut content = stored["content"].as_str().unwrap().to_string();
     let persisted = service
-            .get_for_user(&uid, &id)
-            .await
-            .unwrap()
-            .unwrap();
+        .get_for_user(&uid, &id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(persisted
         .extra_metadata
         .as_ref()
