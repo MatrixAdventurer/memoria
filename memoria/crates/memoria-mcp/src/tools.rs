@@ -208,6 +208,12 @@ pub(crate) const MEMORY_CAPABILITIES_TEXT: &str = concat!(
     "\nUse exact values T1/T2/T3/T4; natural-language labels like 'verified' are invalid."
 );
 
+// Return the MCP envelope for the public capability-discovery tool.
+// Extracted so its response contract can be validated without a live database.
+fn capabilities_result() -> Value {
+    mcp_text(MEMORY_CAPABILITIES_TEXT)
+}
+
 pub fn list() -> Value {
     json!([
         {
@@ -796,7 +802,7 @@ pub async fn call(
             Ok(mcp_text(&text))
         }
 
-        ToolCallName::MemoryCapabilities => Ok(mcp_text(MEMORY_CAPABILITIES_TEXT)),
+        ToolCallName::MemoryCapabilities => Ok(capabilities_result()),
 
         ToolCallName::MemoryGovernance => {
             let force = args["force"].as_bool().unwrap_or(false);
@@ -1572,6 +1578,64 @@ pub fn entity_extract_prompt(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capabilities_result_is_machine_readable_and_exposes_only_public_tools() {
+        let response = capabilities_result();
+        assert_eq!(response["content"][0]["type"], "text");
+        let text = response["content"][0]["text"]
+            .as_str()
+            .expect("MCP text content");
+        let payload: Value = serde_json::from_str(text).expect("capabilities must contain JSON");
+        let tools = payload["tools"].as_array().expect("tools array");
+        let expected = [
+            "memory_store",
+            "memory_retrieve",
+            "memory_search",
+            "memory_correct",
+            "memory_purge",
+            "memory_profile",
+            "memory_list",
+            "memory_capabilities",
+            "memory_governance",
+            "memory_consolidate",
+            "memory_reflect",
+            "memory_feedback",
+        ];
+        assert_eq!(tools.len(), expected.len(), "no public tools omitted or duplicated");
+        let advertised = list();
+        let advertised = advertised.as_array().expect("tools/list entries");
+        for name in expected {
+            let entry = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing public tool: {name}"));
+            let canonical = advertised
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing tools/list metadata: {name}"));
+            assert_eq!(entry["description"], canonical["description"]);
+            assert_eq!(entry["inputSchema"], canonical["inputSchema"]);
+        }
+        for hidden in [
+            "memory_rebuild_index",
+            "memory_extract_entities",
+            "memory_link_entities",
+            "memory_get_retrieval_params",
+            "memory_tune_params",
+            "memory_observe",
+        ] {
+            assert!(
+                tools.iter().all(|tool| tool["name"].as_str() != Some(hidden)),
+                "hidden tool leaked: {hidden}"
+            );
+        }
+        let guide = payload["guidance"].as_str().expect("trust tier guide");
+        assert!(guide.contains("memory_store trust_tier guide"));
+        assert!(guide.contains("T1 (Verified)"));
+        assert!(guide.contains("Prefer T3 if unsure"));
+        assert!(guide.contains("natural-language labels like 'verified' are invalid"));
+    }
+
 
     #[test]
     fn missing_session_id_preserves_message_and_input_classification() {
