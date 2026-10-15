@@ -1,0 +1,15 @@
+name: Snapshot preview formatting
+on:
+  push:
+    branches: [verify/snapshot-utf8-format]
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt
+      - run: rustfmt --check --edition 2021 --config skip_children=true memoria/crates/memoria-api/src/routes/snapshots.rs memoria/crates/memoria-api/tests/api_e2e.rs
