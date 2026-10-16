@@ -1,8 +1,8 @@
-name: Test
+name: Verify topic purge truncation
 
 on:
   push:
-    branches: [main, develop]
+    branches: [verify/topic-purge-truncation]
   pull_request:
     branches: [main, develop]
 
@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
       - uses: dtolnay/rust-toolchain@1.85.0
         with:
           components: clippy
@@ -41,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -62,6 +66,8 @@ jobs:
         options: --memory=4g
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -74,6 +80,23 @@ jobs:
             bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null && break
             echo "Waiting... ($i/30)" && sleep 3
           done
+      - name: Topic purge baseline regression
+        run: |
+          set -euo pipefail
+          source_file=memoria/crates/memoria-storage/src/store.rs
+          cp "$source_file" /tmp/topic-fixed.rs
+          trap 'cp /tmp/topic-fixed.rs "$source_file"' EXIT
+          git show cb38fec1cf15a3be30f8afccff31c0506bbe41d5:"$source_file" > "$source_file"
+          set +e
+          (cd memoria && cargo test -p memoria-storage --test store_crud test_topic_purge_fallback_exceeds_500_matches -- --exact --nocapture) > /tmp/topic-red.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/topic-red.log
+          test "$result" -ne 0
+          grep -F 'topic purge must not silently truncate matches at 500' /tmp/topic-red.log
+          grep -F '0 passed; 1 failed;' /tmp/topic-red.log
+      - name: Topic purge fixed regression
+        run: cd memoria && cargo test -p memoria-storage --test store_crud test_topic_purge_fallback_exceeds_500_matches -- --exact --nocapture
       - name: All tests
         run: cd memoria && cargo test -- --test-threads=1
       - name: Restore transaction failure regression
