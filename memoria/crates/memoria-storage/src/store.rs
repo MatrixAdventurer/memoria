@@ -5838,10 +5838,12 @@ impl SqlMemoryStore {
             }
         }
 
-        // Fallback: LIKE on user's active memories (idx_user_active narrows scan)
+        // Fallback: LIKE on user's active memories (idx_user_active narrows scan).
+        // Purge has no continuation cursor: return every match, just like the
+        // fulltext path above, or a successful purge silently leaves active rows.
         let sql = format!(
             "SELECT memory_id FROM {table} \
-             WHERE user_id = ? AND is_active = 1 AND content LIKE ? LIMIT 500"
+             WHERE user_id = ? AND is_active = 1 AND content LIKE ?"
         );
         let rows: Vec<(String,)> = sqlx::query_as(&sql)
             .bind(user_id)
