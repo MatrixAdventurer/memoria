@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
+use std::time::Duration;
 
 use futures_core::future::BoxFuture;
 use futures_util::FutureExt;
@@ -22,6 +23,9 @@ mod stream;
 mod tls;
 
 const MAX_PACKET_SIZE: u32 = 1024;
+// Match sqlx-core's close-on-drop budget. Bound the entire graceful close,
+// including response draining and socket writes, for all callers.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A connection to a MySQL database.
 pub struct MySqlConnection {
@@ -84,14 +88,30 @@ impl Connection for MySqlConnection {
     fn close(mut self) -> BoxFuture<'static, Result<(), Error>> {
         Box::pin(async move {
             self.check_preparation_state()?;
-            self.inner.stream.send_packet(Quit).await?;
-            self.inner.stream.shutdown().await?;
+            let result = sqlx_core::rt::timeout(CLOSE_TIMEOUT, async {
+                self.inner.stream.wait_until_ready().await?;
+                self.inner.stream.send_packet(Quit).await?;
+                self.inner.stream.shutdown().await?;
+                Ok(())
+            })
+            .await;
 
-            Ok(())
+            // `self` owns the socket: dropping it on timeout disconnects without
+            // another flush/drain attempt that could wait on the stalled peer.
+            match result {
+                Ok(result) => result,
+                Err(_) => Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out while closing MySQL connection",
+                )
+                .into()),
+            }
         })
     }
 
     fn close_hard(mut self) -> BoxFuture<'static, Result<(), Error>> {
+        // Hard close is the escape hatch for a stalled/broken server. Dropping
+        // the session releases its statements; do not wait for query responses.
         Box::pin(async move {
             if self.inner.preparing_statement {
                 // A cancelled send may still have buffered PREPARE bytes.
@@ -124,7 +144,7 @@ impl Connection for MySqlConnection {
 
     fn clear_cached_statements(&mut self) -> BoxFuture<'_, Result<(), Error>> {
         Box::pin(async move {
-            self.check_preparation_state()?;
+            self.wait_until_ready().await?;
             while let Some((statement_id, _)) = self.inner.cache_statement.remove_lru() {
                 self.inner
                     .stream
@@ -140,7 +160,9 @@ impl Connection for MySqlConnection {
 
     #[doc(hidden)]
     fn should_flush(&self) -> bool {
-        !self.inner.stream.write_buffer().is_empty()
+        // Keep the Connection trait's pending-work report accurate. Typed MySQL
+        // pool return drains through ping(), not by consulting this method.
+        !self.inner.stream.write_buffer().is_empty() || !self.inner.stream.waiting.is_empty()
     }
 
     fn begin(&mut self) -> BoxFuture<'_, Result<Transaction<'_, Self::Database>, Error>>

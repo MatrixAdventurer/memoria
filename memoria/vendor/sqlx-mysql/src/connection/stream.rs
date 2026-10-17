@@ -9,6 +9,8 @@ use crate::io::MySqlBufExt;
 use crate::io::{ProtocolDecode, ProtocolEncode};
 use crate::net::{BufferedSocket, Socket};
 use crate::protocol::response::{EofPacket, ErrPacket, OkPacket, Status};
+use crate::protocol::statement::StmtClose;
+use crate::protocol::text::Query;
 use crate::protocol::{Capabilities, Packet};
 use crate::{MySqlConnectOptions, MySqlDatabaseError};
 
@@ -31,6 +33,27 @@ pub(crate) enum Waiting {
 
     // waiting for a row within a result set
     Row,
+
+    // Commands queued behind the preceding response. Keep these in the same
+    // queue so response draining, statement cleanup and rollback stay ordered.
+    Close(u32),
+    Rollback(String),
+}
+
+// An ERR terminates an outstanding response, never an unsent cleanup command.
+// Exchanges such as authentication, ping and explicit PREPARE can have no
+// query-response entry, so an empty queue is also valid.
+fn complete_error_response(waiting: &mut VecDeque<Waiting>) -> Result<(), Error> {
+    match waiting.front() {
+        Some(Waiting::Result | Waiting::Row) => {
+            waiting.pop_front();
+            Ok(())
+        }
+        None => Ok(()),
+        Some(Waiting::Close(_) | Waiting::Rollback(_)) => Err(err_protocol!(
+            "received ERR with a deferred command at the front of the response queue"
+        )),
+    }
 }
 
 impl<S: Socket> MySqlStream<S> {
@@ -74,33 +97,44 @@ impl<S: Socket> MySqlStream<S> {
             self.socket.flush().await?;
         }
 
-        while !self.waiting.is_empty() {
-            while self.waiting.front() == Some(&Waiting::Row) {
-                let packet = self.recv_packet().await?;
-
-                if !packet.is_empty() && packet[0] == 0xfe && packet.len() < 9 {
-                    let eof = packet.eof(self.capabilities)?;
-
-                    if eof.status.contains(Status::SERVER_MORE_RESULTS_EXISTS) {
-                        *self.waiting.front_mut().unwrap() = Waiting::Result;
-                    } else {
-                        self.waiting.pop_front();
-                    };
-                }
-            }
-
-            while self.waiting.front() == Some(&Waiting::Result) {
-                let packet = self.recv_packet().await?;
-
-                if !packet.is_empty() && (packet[0] == 0x00 || packet[0] == 0xff) {
-                    let ok = packet.ok()?;
-
-                    if !ok.status.contains(Status::SERVER_MORE_RESULTS_EXISTS) {
-                        self.waiting.pop_front();
+        while let Some(waiting) = self.waiting.front() {
+            match waiting {
+                Waiting::Row => {
+                    let packet = self.recv_packet().await?;
+                    if !packet.is_empty() && packet[0] == 0xfe && packet.len() < 9 {
+                        let eof = packet.eof(self.capabilities)?;
+                        if eof.status.contains(Status::SERVER_MORE_RESULTS_EXISTS) {
+                            *self.waiting.front_mut().unwrap() = Waiting::Result;
+                        } else {
+                            self.waiting.pop_front();
+                        }
                     }
-                } else {
-                    *self.waiting.front_mut().unwrap() = Waiting::Row;
-                    self.skip_result_metadata(packet).await?;
+                }
+                Waiting::Result => {
+                    let packet = self.recv_packet().await?;
+                    if !packet.is_empty() && (packet[0] == 0x00 || packet[0] == 0xff) {
+                        let ok = packet.ok()?;
+                        if !ok.status.contains(Status::SERVER_MORE_RESULTS_EXISTS) {
+                            self.waiting.pop_front();
+                        }
+                    } else {
+                        *self.waiting.front_mut().unwrap() = Waiting::Row;
+                        self.skip_result_metadata(packet).await?;
+                    }
+                }
+                Waiting::Close(statement) => {
+                    let statement = *statement;
+                    self.waiting.pop_front();
+                    self.send_packet(StmtClose { statement }).await?;
+                }
+                Waiting::Rollback(_) => {
+                    let Some(Waiting::Rollback(sql)) = self.waiting.pop_front() else {
+                        unreachable!();
+                    };
+                    // Record the response before the await so cancellation can
+                    // resume by flushing buffered bytes and draining this result.
+                    self.waiting.push_front(Waiting::Result);
+                    self.send_packet(Query(&sql)).await?;
                 }
             }
         }
@@ -172,13 +206,10 @@ impl<S: Socket> MySqlStream<S> {
             .ok_or(err_protocol!("Packet empty"))?
             .eq(&0xff)
         {
-            self.waiting.pop_front();
-
-            // instead of letting this packet be looked at everywhere, we check here
-            // and emit a proper Error
-            return Err(
-                MySqlDatabaseError(ErrPacket::decode_with(payload, self.capabilities)?).into(),
-            );
+            // Decode first: malformed ERR packets must not advance queue state.
+            let error = ErrPacket::decode_with(payload, self.capabilities)?;
+            complete_error_response(&mut self.waiting)?;
+            return Err(MySqlDatabaseError(error).into());
         }
 
         Ok(Packet(payload))
@@ -240,5 +271,48 @@ impl<S> Deref for MySqlStream<S> {
 impl<S> DerefMut for MySqlStream<S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.socket
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{complete_error_response, Waiting};
+    use crate::Error;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn error_completes_only_the_active_response() {
+        for response in [Waiting::Result, Waiting::Row] {
+            let mut waiting = VecDeque::from([
+                response,
+                Waiting::Close(7),
+                Waiting::Rollback("ROLLBACK".into()),
+            ]);
+            complete_error_response(&mut waiting).unwrap();
+            assert_eq!(
+                waiting,
+                VecDeque::from([Waiting::Close(7), Waiting::Rollback("ROLLBACK".into()),])
+            );
+        }
+    }
+
+    #[test]
+    fn error_without_a_queued_query_response_is_valid() {
+        let mut waiting = VecDeque::new();
+        complete_error_response(&mut waiting).unwrap();
+        assert!(waiting.is_empty());
+    }
+
+    #[test]
+    fn error_never_discards_a_deferred_command() {
+        for command in [Waiting::Close(7), Waiting::Rollback("ROLLBACK".into())] {
+            let mut waiting = VecDeque::from([command, Waiting::Result]);
+            let original = format!("{waiting:?}");
+            assert!(matches!(
+                complete_error_response(&mut waiting),
+                Err(Error::Protocol(_))
+            ));
+            assert_eq!(format!("{waiting:?}"), original);
+        }
     }
 }
