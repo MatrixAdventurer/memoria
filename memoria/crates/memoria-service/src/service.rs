@@ -2293,7 +2293,7 @@ impl MemoryService {
                 embedding: self.embed(new_content).await?,
                 session_id: old.session_id.clone(),
                 source_event_ids: vec![format!("correct:{}", memory_id)],
-                extra_metadata: None,
+                extra_metadata: correction_metadata(&old),
                 observed_at: Some(Utc::now()),
                 created_at: Some(Utc::now()),
                 updated_at: None,
@@ -2359,7 +2359,7 @@ impl MemoryService {
                 embedding: self.embed(new_content).await?,
                 session_id: old.session_id.clone(),
                 source_event_ids: vec![format!("correct:{}", memory_id)],
-                extra_metadata: None,
+                extra_metadata: correction_metadata(&old),
                 observed_at: Some(Utc::now()),
                 created_at: Some(Utc::now()),
                 updated_at: None,
@@ -3629,6 +3629,16 @@ impl MemoryService {
 }
 
 use memoria_core::STORE_REQUEST_HASH_FIELD;
+
+// Business metadata belongs to the memory across content revisions. The store
+// request fingerprint certifies only the original write, not this replacement.
+fn correction_metadata(memory: &Memory) -> Option<HashMap<String, serde_json::Value>> {
+    memory.extra_metadata.as_ref().map(|metadata| {
+        let mut metadata = metadata.clone();
+        metadata.remove(STORE_REQUEST_HASH_FIELD);
+        metadata
+    })
+}
 
 fn reject_reserved_metadata(
     metadata: Option<&HashMap<String, serde_json::Value>>,
