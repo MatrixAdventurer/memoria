@@ -1091,3 +1091,62 @@ async fn test_list_active_lite_limit_cap() {
     assert!(results.len() <= 501, "should cap at 501");
     println!("✅ list_active_lite_limit_cap");
 }
+
+#[tokio::test]
+async fn test_topic_purge_fallback_exceeds_500_matches() {
+    let (store, uid) = setup().await;
+    // Punctuation is a valid literal topic but has no fulltext tokens, so this
+    // exercises the LIKE fallback without depending on tokenizer behavior.
+    let mut memories: Vec<_> = (0..501)
+        .map(|i| {
+            let mut memory = make_memory(
+                &format!("topic-{i}-{uid}"),
+                &format!("retired ::: record {i}"),
+                &uid,
+            );
+            memory.embedding = None;
+            memory
+        })
+        .collect();
+    let keep_id = format!("topic-keep-{uid}");
+    memories.push(make_memory(&keep_id, "keep this record", &uid));
+    let other_id = format!("topic-other-{uid}");
+    memories.push(make_memory(
+        &other_id,
+        "other owner :::",
+        &format!("{uid}_other"),
+    ));
+    let inactive_id = format!("topic-inactive-{uid}");
+    memories.push(make_memory(&inactive_id, "inactive :::", &uid));
+    store
+        .batch_insert_into("mem_memories", &memories.iter().collect::<Vec<_>>())
+        .await
+        .expect("seed topic matches and controls");
+    store.soft_delete(&inactive_id).await.unwrap();
+
+    let ids = store
+        .find_ids_by_topic("mem_memories", &uid, ":::")
+        .await
+        .expect("find literal topic matches");
+    let expected: std::collections::HashSet<_> =
+        memories[..501].iter().map(|m| m.memory_id.clone()).collect();
+    assert_eq!(
+        ids.iter().cloned().collect::<std::collections::HashSet<_>>(),
+        expected,
+        "topic purge must not silently truncate matches at 500"
+    );
+
+    // Use the same batch deletion primitive as MemoryService::purge_sql_ids.
+    store
+        .soft_delete_batch_from("mem_memories", &ids)
+        .await
+        .unwrap();
+    assert!(store
+        .find_ids_by_topic("mem_memories", &uid, ":::")
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(store.get(&keep_id).await.unwrap().is_some());
+    assert!(store.get(&other_id).await.unwrap().is_some());
+    assert!(store.get(&inactive_id).await.unwrap().is_none());
+}
