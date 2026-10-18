@@ -85,13 +85,14 @@ def _should_retry_network_error(
     retry_unsafe_writes: bool = False,
     idempotent: bool | None = None,
 ) -> bool:
-    """ConnectError is safe to retry for anything (the server never received it).
+    """Failures before sending the request are safe to retry for any method.
 
-    Everything else is only safe for idempotent operations: a read timeout, a
-    dropped connection or a disconnect-before-response may all mean the server
-    processed the request and only the response was lost.
+    Connection establishment and pool acquisition failures cannot have sent the
+    request. Other retryable failures require idempotency or explicit unsafe
+    write opt-in: a read timeout, dropped connection or disconnect-before-response
+    may mean the server processed the request and only the response was lost.
     """
-    if isinstance(exc, httpx.ConnectError):
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
         return True
     retryable = isinstance(
         exc, (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError)
@@ -191,10 +192,10 @@ class _HttpTransport:
         Retry policy:
           - idempotent methods (GET/HEAD/PUT/DELETE): 500/502/503/504 and any
             transport error are retried
-          - non-idempotent methods (POST/PATCH): not retried unless the client was
-            built with ``retry_unsafe_writes=True``, because no status code or
-            transport error proves the server did not already commit the write
-          - ConnectError: always retried; the request never reached the server
+          - non-idempotent methods (POST/PATCH): HTTP status and ambiguous
+            transport failures are not retried without ``retry_unsafe_writes=True``
+          - ConnectError/ConnectTimeout/PoolTimeout: retried within the configured
+            budget even for writes; the request has not been sent
         """
         url = self._url(path)
         last_exc: Exception | None = None
