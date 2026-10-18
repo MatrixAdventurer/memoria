@@ -6,6 +6,7 @@ import builtins
 import json
 import math
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from ..exceptions import MemoriaValidationError
 from ..models import Memory, MemoryPage, PurgeResult, RetrieveResult
@@ -34,6 +35,15 @@ _MEMORY_TYPE_NAMES = {
 
 def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
+
+
+def _memory_path(memory_id: str, suffix: str = "") -> str:
+    # IDs are literal selectors, not query strings, fragments, or navigation.
+    # Match the branch/snapshot boundary, including httpx dot normalization.
+    encoded = quote(memory_id, safe="")
+    if memory_id in {".", ".."}:
+        encoded = "%2E" * len(memory_id)
+    return f"/v1/memories/{encoded}{suffix}"
 
 
 def _normalize_query_memory_types(
@@ -496,7 +506,7 @@ class MemoriesResource:
         # PUT, but not idempotent: the server mints a replacement record and
         # supersedes the original, so a replay 404s or creates a second one.
         data = self._client._request(
-            "PUT", f"/v1/memories/{id}/correct", json=body, idempotent=False
+            "PUT", _memory_path(id, "/correct"), json=body, idempotent=False
         )
         return Memory.from_dict(data)
 
@@ -533,7 +543,7 @@ class MemoriesResource:
         branch: str | None = None,
     ) -> None:
         params = _strip_none({"reason": reason, "branch": branch})
-        self._client._request("DELETE", f"/v1/memories/{id}", params=params)
+        self._client._request("DELETE", _memory_path(id), params=params)
 
     def purge(
         self,
@@ -583,7 +593,7 @@ class MemoriesResource:
         context: str | None = None,
     ) -> None:
         body = _strip_none({"signal": signal, "context": context})
-        self._client._request("POST", f"/v1/memories/{id}/feedback", json=body)
+        self._client._request("POST", _memory_path(id, "/feedback"), json=body)
 
 
 class AsyncMemoriesResource:
@@ -794,7 +804,7 @@ class AsyncMemoriesResource:
         body = _strip_none({"new_content": new_content, "reason": reason, "branch": branch})
         # PUT, but not idempotent — see the sync path.
         data = await self._client._arequest(
-            "PUT", f"/v1/memories/{id}/correct", json=body, idempotent=False
+            "PUT", _memory_path(id, "/correct"), json=body, idempotent=False
         )
         return Memory.from_dict(data)
 
@@ -831,7 +841,7 @@ class AsyncMemoriesResource:
         branch: str | None = None,
     ) -> None:
         params = _strip_none({"reason": reason, "branch": branch})
-        await self._client._arequest("DELETE", f"/v1/memories/{id}", params=params)
+        await self._client._arequest("DELETE", _memory_path(id), params=params)
 
     async def purge(
         self,
@@ -881,4 +891,4 @@ class AsyncMemoriesResource:
         context: str | None = None,
     ) -> None:
         body = _strip_none({"signal": signal, "context": context})
-        await self._client._arequest("POST", f"/v1/memories/{id}/feedback", json=body)
+        await self._client._arequest("POST", _memory_path(id, "/feedback"), json=body)
