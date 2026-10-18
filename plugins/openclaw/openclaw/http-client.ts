@@ -173,7 +173,7 @@ export class MemoriaHttpTransport {
 
   /** Returns the active memory or null; the API answers `null` for unknown IDs. */
   private async getOne(args: Record<string, unknown>) {
-    const data = await this.get(`/v1/memories/${encodeURIComponent(String(args.memory_id))}`);
+    const data = await this.get(this.memoryPath(String(args.memory_id)));
     return this.asRecord(data) ?? null;
   }
 
@@ -193,7 +193,7 @@ export class MemoriaHttpTransport {
         new_content: args.new_content,
       };
       if (args.reason) body.reason = args.reason;
-      const data = await this.put(`/v1/memories/${args.memory_id}/correct`, body);
+      const data = await this.put(this.memoryPath(args.memory_id, "/correct"), body);
       const rec = this.asRecord(data);
       return `Corrected memory ${rec?.memory_id ?? args.memory_id}: ${rec?.content ?? args.new_content}`;
     }
@@ -328,6 +328,14 @@ export class MemoriaHttpTransport {
   }
 
   // ── HTTP primitives ───────────────────────────────────────────
+
+  private memoryPath(id: string, suffix = ""): string {
+    // WHATWG URLs normalize even percent-encoded dot-only segments as navigation.
+    if (id === "." || id === "..") {
+      throw new Error("memory_id must not be a dot-only path segment");
+    }
+    return `/v1/memories/${encodeURIComponent(id)}${suffix}`;
+  }
 
   private headers(): Record<string, string> {
     // In api mode, the API key (sk-...) already scopes to its owning user.
