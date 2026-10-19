@@ -210,7 +210,19 @@ export class MemoriaHttpTransport {
 
   private async purge(args: Record<string, unknown>) {
     const body: Record<string, unknown> = {};
-    if (args.memory_id) body.memory_ids = [args.memory_id];
+    if (args.memory_id !== undefined && args.memory_id !== null) {
+      if (typeof args.memory_id !== "string") {
+        throw new Error("memory_id must be a string");
+      }
+      // Match the MCP single-ID / comma-separated batch selector contract.
+      const ids = args.memory_id.split(",").map((id) => id.trim()).filter(Boolean);
+      // The API treats an empty array as no ID selector. Never let an invalid
+      // batch silently fall through to a broader topic deletion.
+      if (ids.length === 0) {
+        throw new Error("memory_id must contain at least one non-empty ID");
+      }
+      body.memory_ids = ids;
+    }
     if (args.topic) body.topic = args.topic;
     if (args.reason) body.reason = args.reason;
     const data = await this.post("/v1/memories/purge", body);

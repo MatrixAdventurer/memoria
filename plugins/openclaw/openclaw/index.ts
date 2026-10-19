@@ -917,7 +917,7 @@ const plugin = {
           name: "memory_purge",
           description: "Delete memories by id or by keyword topic.",
           parameters: objectSchema({
-            memoryId: { type: "string", description: "Specific memory id to delete" },
+            memoryId: { type: "string", description: "Single memory ID or comma-separated IDs to delete" },
             topic: { type: "string", description: "Keyword/topic for bulk deletion" },
             reason: { type: "string", description: "Optional deletion reason" },
             userId: userIdProperty,
