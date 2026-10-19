@@ -55,6 +55,87 @@ describe("HTTP batch purge selectors", () => {
     }
   });
 
+  describe.each(["deleteMemory", "purgeMemory"] as const)("%s cache invalidation", (method) => {
+    it.each([
+      { memoryId: "m1,m2", ids: ["m1", "m2"] },
+      { memoryId: " m1 , m2 ", ids: ["m1", "m2"] },
+      { memoryId: ",m1,,m2,", ids: ["m1", "m2"] },
+      { memoryId: " m1 ", ids: ["m1"] },
+    ])("evicts every deleted ID for $memoryId", async ({ memoryId, ids }) => {
+      const records = new Map(["m1", "m2", "keep"].map((id) => [
+        id, { memory_id: id, content: id, memory_type: "semantic" },
+      ]));
+      const bodies: unknown[] = [];
+      const fetch = vi.fn(async (input: string, init: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.method === "POST") {
+          expect(new URL(request.url).pathname).toBe("/v1/memories/purge");
+          const body = await request.json();
+          bodies.push(body);
+          let purged = 0;
+          for (const id of body.memory_ids) {
+            if (records.delete(id)) purged++;
+          }
+          return new Response(JSON.stringify({ purged }));
+        }
+        const id = decodeURIComponent(new URL(request.url).pathname.split("/").at(-1)!);
+        return new Response(JSON.stringify(records.get(id) ?? null));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const client = new MemoriaClient(buildApiConfig());
+      try {
+        for (const userId of ["u", "other"]) {
+          for (const id of records.keys()) {
+            expect(await client.getMemory({ userId, memoryId: id })).not.toBeNull();
+          }
+        }
+        const cachedCalls = fetch.mock.calls.length;
+        expect(await client.getMemory({ userId: "u", memoryId: "m1" })).not.toBeNull();
+        expect(fetch).toHaveBeenCalledTimes(cachedCalls);
+
+        expect((await client[method]({ userId: "u", memoryId })).purged).toBe(ids.length);
+        expect(bodies).toEqual([{ memory_ids: ids }]);
+        for (const id of ids) {
+          const before = fetch.mock.calls.length;
+          expect(await client.getMemory({ userId: "u", memoryId: id })).toBeNull();
+          expect(fetch).toHaveBeenCalledTimes(before + 1);
+        }
+        const after = fetch.mock.calls.length;
+        for (const id of records.keys()) {
+          expect(await client.getMemory({ userId: "u", memoryId: id })).not.toBeNull();
+        }
+        expect(await client.getMemory({ userId: "other", memoryId: "m1" })).not.toBeNull();
+        expect(fetch).toHaveBeenCalledTimes(after);
+      } finally {
+        client.close();
+      }
+    });
+
+    it("keeps cached IDs if deletion fails", async () => {
+      const fetch = vi.fn(async (input: string, init: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.method === "POST") return new Response("denied", { status: 403 });
+        const id = new URL(request.url).pathname.split("/").at(-1);
+        return new Response(JSON.stringify({ memory_id: id, content: id }));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const client = new MemoriaClient(buildApiConfig());
+      try {
+        for (const memoryId of ["m1", "m2"]) {
+          expect(await client.getMemory({ userId: "u", memoryId })).not.toBeNull();
+        }
+        await expect(client[method]({ userId: "u", memoryId: "m1,m2" })).rejects.toThrow("403");
+        const before = fetch.mock.calls.length;
+        for (const memoryId of ["m1", "m2"]) {
+          expect(await client.getMemory({ userId: "u", memoryId })).not.toBeNull();
+        }
+        expect(fetch).toHaveBeenCalledTimes(before);
+      } finally {
+        client.close();
+      }
+    });
+  });
+
   it.each(["", "  ", ", ,", 123, true, ["m1"], { id: "m1" }].map((memoryId) => ({ memoryId })))(
     "rejects invalid ID selector $memoryId before it can become a topic purge",
     async ({ memoryId }) => {
