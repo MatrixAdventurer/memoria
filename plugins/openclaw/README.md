@@ -36,6 +36,12 @@ openclaw --version
 
 Cloud mode connects directly to the Memoria REST API. No binary download needed.
 
+Use the canonical API URL: the HTTP transport rejects redirects, including
+same-origin redirects, to prevent forwarding private memory bodies or rewriting
+write requests. If a proxy redirects an API endpoint, configure its final URL
+instead. A rejected redirect does not prove that the initial write was uncommitted;
+verify the outcome before retrying a write.
+
 ```bash
 # 1. Install plugin
 openclaw plugins install @matrixorigin/thememoria

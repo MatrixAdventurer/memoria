@@ -356,6 +356,9 @@ export class MemoriaHttpTransport {
     try {
       const response = await fetch(url, {
         method,
+        // Redirects can replay private memory bodies to another origin, or
+        // rewrite a mutation into a GET that is falsely reported as success.
+        redirect: "error",
         headers: this.headers(),
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
