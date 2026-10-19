@@ -591,7 +591,10 @@ export class MemoriaClient {
       memory_id: params.memoryId,
       reason: params.reason ?? "",
     });
-    this.invalidateMemoryIds(params.userId, [params.memoryId]);
+    this.invalidateMemoryIds(
+      params.userId,
+      params.memoryId.split(",").map((entry) => entry.trim()),
+    );
     return { purged: parsePurgedCount(text) };
   }
 
