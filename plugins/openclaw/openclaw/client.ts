@@ -140,12 +140,12 @@ function normalizeTypeCounts(value: unknown): Record<string, number> {
 function extractToolText(result: unknown): string {
   const record = asRecord(result);
   if (!record) {
-    return typeof result === "string" ? result.trim() : "";
+    return typeof result === "string" ? result : "";
   }
 
   const content = record.content;
   if (!Array.isArray(content)) {
-    return typeof record.text === "string" ? record.text.trim() : "";
+    return typeof record.text === "string" ? record.text : "";
   }
 
   const parts: string[] = [];
@@ -155,7 +155,7 @@ function extractToolText(result: unknown): string {
       parts.push(block.text);
     }
   }
-  return parts.join("\n").trim();
+  return parts.join("\n");
 }
 
 function parseMemoryTextList(text: string): MemoriaMemoryRecord[] {
@@ -221,7 +221,8 @@ function parseStoredMemory(text: string, fallback: {
   trustTier?: MemoriaTrustTier;
   sessionId?: string;
 }): MemoriaMemoryRecord {
-  const match = text.match(/^Stored memory ([^:]+):\s*([\s\S]*)$/);
+  // Consume only the formatter's separator, not the memory's own indentation.
+  const match = text.match(/^Stored memory ([^:]+): ?([\s\S]*)$/);
   return normalizeMemoryRecord({
     memory_id: match?.[1]?.trim() ?? "",
     content: match?.[2] ?? fallback.content,
@@ -232,7 +233,7 @@ function parseStoredMemory(text: string, fallback: {
 }
 
 function parseCorrectedMemory(text: string, fallbackContent: string) {
-  const match = text.match(/^Corrected memory ([^:]+):\s*([\s\S]*)$/);
+  const match = text.match(/^Corrected memory ([^:]+): ?([\s\S]*)$/);
   if (!match) {
     return null;
   }
@@ -894,7 +895,12 @@ export class MemoriaClient {
   ): Promise<string> {
     const session = this.getSession(userId);
     const result = await session.callTool(name, args);
-    const text = extractToolText(result);
+    const rawText = extractToolText(result);
+    // Mutation text ends in the stored content itself; trimming it corrupts
+    // both the returned record and the cache. Other tools keep their contract.
+    const text = name === "memory_store" || name === "memory_correct"
+      ? rawText
+      : rawText.trim();
     if (text) {
       return text;
     }
