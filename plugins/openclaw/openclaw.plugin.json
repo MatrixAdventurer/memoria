@@ -211,7 +211,7 @@
         "type": "array",
         "items": {
           "type": "string",
-          "enum": ["profile", "semantic", "procedural", "working", "tool_result"]
+          "enum": ["profile", "semantic", "episodic", "procedural", "working", "tool_result"]
         }
       },
       "observeTailMessages": {

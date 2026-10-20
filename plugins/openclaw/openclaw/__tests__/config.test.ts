@@ -2,6 +2,7 @@
  * Group 1: Config & Onboarding
  * "Can a user configure the plugin correctly?"
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   parseMemoriaPluginConfig,
@@ -169,5 +170,23 @@ describe("Group 1: Config & Onboarding", () => {
       pythonExecutable: "/usr/bin/python3",
       memoriaRoot: "/opt/memoria",
     })).not.toThrow();
+  });
+
+  it("1.19 accepts episodic memories in retrieval filters", () => {
+    const config = parseMemoriaPluginConfig({
+      retrieveMemoryTypes: ["episodic"],
+    });
+
+    expect(config.retrieveMemoryTypes).toEqual(["episodic"]);
+  });
+
+  it("1.20 advertises episodic retrieval filters in the plugin manifest", () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../../openclaw.plugin.json", import.meta.url), "utf8"),
+    );
+
+    expect(
+      manifest.configSchema.properties.retrieveMemoryTypes.items.enum,
+    ).toContain("episodic");
   });
 });
