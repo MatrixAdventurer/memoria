@@ -44,6 +44,14 @@ export class MemoriaHttpTransport {
    */
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     const result = await this.dispatch(name, args);
+    if (name === "memory_branches") {
+      // Keep the human-readable envelope, but do not make callers recover
+      // branch identities or active flags from ambiguous display text.
+      return {
+        content: [{ type: "text", text: this.formatBranchList(result) }],
+        structuredContent: Array.isArray(result) ? { branches: result } : result,
+      };
+    }
     // Wrap in MCP-compatible content block so extractToolText() works unchanged
     return { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] };
   }
@@ -303,9 +311,7 @@ export class MemoriaHttpTransport {
   }
 
   private async branchList() {
-    const data = await this.get("/v1/branches");
-    // Format as MCP-compatible text so parseBranches() in client.ts works
-    return this.formatBranchList(data);
+    return this.get("/v1/branches");
   }
 
   private async branchCheckout(args: Record<string, unknown>) {

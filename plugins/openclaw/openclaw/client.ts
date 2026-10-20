@@ -767,7 +767,22 @@ export class MemoriaClient {
   }
 
   async branchList(userId: string) {
-    const text = await this.callToolText(userId, "memory_branches", {});
+    const result = await this.getSession(userId).callTool("memory_branches", {});
+    const structured = asRecord(asRecord(result)?.structuredContent);
+    const branches = structured?.branches ?? structured?.items;
+    if (Array.isArray(branches)) {
+      return branches.flatMap((entry): MemoriaBranchRecord[] => {
+        const branch = asRecord(entry);
+        return branch && typeof branch.name === "string"
+          ? [{ name: branch.name, active: branch.active === true }]
+          : [];
+      });
+    }
+    // Older responses may only carry the published text representation.
+    const text = extractToolText(result).trim();
+    if (!text) {
+      throw new Error("Memoria tool 'memory_branches' returned no text content.");
+    }
     return parseBranches(text);
   }
 
