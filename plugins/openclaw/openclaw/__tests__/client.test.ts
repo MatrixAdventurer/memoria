@@ -14,6 +14,24 @@ afterEach(() => {
 });
 
 describe("Group 5: Session & Backend Routing", () => {
+  it("passes configured retrieval memory types to the API without changing omitted filters", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.respondWith(200, { results: [] });
+    const client = new MemoriaClient(buildApiConfig());
+    try {
+      await client.retrieve({ userId: "u1", query: "type-filter", topK: 3, memoryTypes: ["episodic", "profile"] });
+      expect(fetchMock.lastCall()!.body).toMatchObject({
+        query: "type-filter",
+        top_k: 3,
+        memory_types: ["episodic", "profile"],
+      });
+      await client.retrieve({ userId: "u1", query: "no-filter", topK: 2 });
+      expect(fetchMock.lastCall()!.body).toEqual({ query: "no-filter", top_k: 2 });
+    } finally {
+      client.close();
+    }
+  });
+
   it("5.1 getSession with backend=api returns MemoriaHttpTransport", async () => {
     const fetchMock = mockFetch();
     fetchMock.respondWith(200, { results: [] });

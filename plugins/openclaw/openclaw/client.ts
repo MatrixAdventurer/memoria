@@ -387,6 +387,7 @@ export class MemoriaClient {
     const text = await this.callToolText(params.userId, "memory_retrieve", {
       query: params.query,
       top_k: params.topK,
+      memory_types: params.memoryTypes,
       session_id: params.sessionId,
     });
     const memories = parseMemoryTextList(text);
