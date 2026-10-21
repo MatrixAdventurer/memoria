@@ -163,6 +163,9 @@ The plugin exposes these tools to OpenClaw:
 - `memory_branch`, `memory_branches`, `memory_checkout`, `memory_branch_delete`, `memory_merge`, `memory_diff`
 - Compatibility CLI aliases under `openclaw ltm ...`
 
+In API mode, snapshot discovery follows `has_more` pages up to `maxListPages`.
+If that bound is reached or pagination fails, listing reports an error and snapshot statistics remain unavailable rather than reporting a partial count as complete.
+
 ## Common Pitfalls
 
 **`openclaw memoria` vs `openclaw memory`:** This plugin uses `openclaw memoria`. The `openclaw memory` namespace is OpenClaw's built-in file memory — a different system entirely.

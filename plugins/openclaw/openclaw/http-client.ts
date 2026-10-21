@@ -292,10 +292,29 @@ export class MemoriaHttpTransport {
 
   private async listSnapshots(args: Record<string, unknown>) {
     const limit = typeof args.limit === "number" ? args.limit : 20;
-    const offset = typeof args.offset === "number" ? args.offset : 0;
-    const data = await this.get(`/v1/snapshots?limit=${limit}&offset=${offset}`);
-    // Format as MCP-compatible text so parseSnapshotList() in client.ts works
-    return this.formatSnapshotList(data);
+    let offset = typeof args.offset === "number" ? args.offset : 0;
+    // Explicit transport-level pagination remains a single page. The public
+    // client/tool supplies neither argument and promises all known snapshots.
+    if (typeof args.limit === "number" || typeof args.offset === "number") {
+      return this.formatSnapshotList(await this.get(`/v1/snapshots?limit=${limit}&offset=${offset}`));
+    }
+    const snapshots: unknown[] = [];
+    for (let page = 0; page < this.maxListPages; page++) {
+      const data = await this.get(`/v1/snapshots?limit=${limit}&offset=${offset}`);
+      const rec = this.asRecord(data);
+      if (!Array.isArray(rec?.snapshots)) {
+        // Preserve older unpaginated response formats on the first request.
+        if (page === 0) return this.formatSnapshotList(data);
+        throw new Error("Memoria snapshot listing returned a malformed page");
+      }
+      const items = rec.snapshots;
+      snapshots.push(...items);
+      if (rec.has_more !== true) return this.formatSnapshotList({ snapshots });
+      if (items.length === 0) throw new Error("Memoria snapshot listing returned an empty page with has_more");
+      offset += items.length;
+    }
+    // Do not let listSnapshots/stats present a bounded prefix as a complete list.
+    throw new Error(`Memoria snapshot listing exceeded maxListPages (${this.maxListPages})`);
   }
 
   private async rollbackSnapshot(args: Record<string, unknown>) {
