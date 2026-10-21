@@ -332,8 +332,12 @@ export class MemoriaHttpTransport {
   async healthCheck(): Promise<{ status: string; instance_id?: string; db?: boolean }> {
     const data = await this.get("/health/instance");
     const rec = this.asRecord(data);
+    const status = typeof rec?.status === "string" ? rec.status.trim() : "";
+    if (!status) {
+      throw new Error("Invalid health response: missing status");
+    }
     return {
-      status: typeof rec?.status === "string" ? rec.status : "ok",
+      status,
       instance_id: typeof rec?.instance_id === "string" ? rec.instance_id : undefined,
       db: typeof rec?.db === "boolean" ? rec.db : undefined,
     };

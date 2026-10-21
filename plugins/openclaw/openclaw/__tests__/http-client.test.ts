@@ -155,6 +155,16 @@ describe("Group 3: Cloud API Communication", () => {
       expect(result.instance_id).toBe("i-1");
     });
 
+    it.each([
+      ["an object without status", { instance_id: "i-1", db: true }],
+      ["an empty status", { status: "   ", instance_id: "i-1", db: true }],
+      ["a non-object response", "ok"],
+    ])("3.29a healthCheck rejects %s", async (_description, response) => {
+      fetchMock.respondWith(200, response);
+
+      await expect(transport.healthCheck()).rejects.toThrow(/invalid health response/i);
+    });
+
     it("3.30 unknown tool throws", async () => {
       await expect(transport.callTool("memory_nonexistent", {}))
         .rejects.toThrow(/Unknown Memoria tool/);
