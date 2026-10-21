@@ -160,9 +160,9 @@ function collectRecentConversationMessages(
 function readString(
   params: Record<string, unknown>,
   key: string,
-  options: { required?: boolean; label?: string } = {},
+  options: { required?: boolean; label?: string; preserveWhitespace?: boolean } = {},
 ): string | undefined {
-  const { required = false, label = key } = options;
+  const { required = false, label = key, preserveWhitespace = false } = options;
   const raw = params[key];
   if (typeof raw !== "string" || !raw.trim()) {
     if (required) {
@@ -170,7 +170,7 @@ function readString(
     }
     return undefined;
   }
-  return raw.trim();
+  return preserveWhitespace ? raw : raw.trim();
 }
 
 function readNumber(params: Record<string, unknown>, key: string): number | undefined {
@@ -1368,7 +1368,11 @@ const plugin = {
           execute: async (_toolCallId: string, rawParams: unknown) => {
             const params = asRecord(rawParams) ?? {};
             const userId = resolveUserId(config, ctx, readString(params, "userId"));
-            const name = readString(params, "name", { required: true, label: "name" })!;
+            const name = readString(params, "name", {
+              required: true,
+              label: "name",
+              preserveWhitespace: true,
+            })!;
             const result = await client.branchCheckout({ userId, name });
             return jsonResult({
               userId,
@@ -1391,7 +1395,11 @@ const plugin = {
           execute: async (_toolCallId: string, rawParams: unknown) => {
             const params = asRecord(rawParams) ?? {};
             const userId = resolveUserId(config, ctx, readString(params, "userId"));
-            const name = readString(params, "name", { required: true, label: "name" })!;
+            const name = readString(params, "name", {
+              required: true,
+              label: "name",
+              preserveWhitespace: true,
+            })!;
             const result = await client.branchDelete({ userId, name });
             return jsonResult({
               userId,
