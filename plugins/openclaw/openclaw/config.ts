@@ -3,6 +3,7 @@ import type { OpenClawPluginConfigSchema } from "openclaw/plugin-sdk";
 export const MEMORIA_MEMORY_TYPES = [
   "profile",
   "semantic",
+  "episodic",
   "procedural",
   "working",
   "tool_result",
