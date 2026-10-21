@@ -133,6 +133,7 @@ export class MemoriaHttpTransport {
       top_k: args.top_k ?? 5,
     };
     if (args.session_id) body.session_id = args.session_id;
+    if (args.memory_types !== undefined) body.memory_types = args.memory_types;
     const data = await this.post("/v1/memories/retrieve", body);
     return this.formatMemoryList(data);
   }
