@@ -9,6 +9,7 @@ const servers: Server[] = [];
 
 async function serveSnapshots(total: number, mode = "normal") {
   const offsets: number[] = [];
+  const countResolution: (string | null)[] = [];
   const snapshots = Array.from({ length: total }, (_, i) => ({
     name: `release_${i}`, snapshot_name: `mem_snap_release_${i}`,
     timestamp: "2026-10-21T00:00:00Z",
@@ -27,6 +28,7 @@ async function serveSnapshots(total: number, mode = "normal") {
     const offset = Number(url.searchParams.get("offset") ?? 0);
     const limit = Number(url.searchParams.get("limit") ?? 20);
     offsets.push(offset);
+    countResolution.push(url.searchParams.get("resolve_memory_counts"));
     if (mode === "fail-later" && offset > 0) {
       response.writeHead(503);
       response.end("unavailable");
@@ -42,7 +44,7 @@ async function serveSnapshots(total: number, mode = "normal") {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     apiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    offsets, snapshots,
+    offsets, snapshots, countResolution,
   };
 }
 
@@ -64,6 +66,8 @@ describe("snapshot discovery pagination (real HTTP)", () => {
         .toEqual(fixture.snapshots.map((s) => s.name));
       expect(fixture.offsets).toEqual([0, 20, 40]);
       expect((await client.stats("u")).snapshotCount).toBe(45);
+      // Both discovery and stats need metadata, not per-snapshot historical counts.
+      expect(fixture.countResolution).toEqual(Array(6).fill("false"));
     } finally {
       client.close();
     }
@@ -112,5 +116,6 @@ describe("snapshot discovery pagination (real HTTP)", () => {
     expect(JSON.stringify(result)).toContain("release_20");
     expect(JSON.stringify(result)).not.toContain("release_22");
     expect(fixture.offsets).toEqual([20]);
+    expect(fixture.countResolution).toEqual([null]);
   });
 });

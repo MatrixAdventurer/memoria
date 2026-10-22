@@ -300,7 +300,8 @@ export class MemoriaHttpTransport {
     }
     const snapshots: unknown[] = [];
     for (let page = 0; page < this.maxListPages; page++) {
-      const data = await this.get(`/v1/snapshots?limit=${limit}&offset=${offset}`);
+      // Discovery only uses snapshot metadata, so avoid historical count backfills.
+      const data = await this.get(`/v1/snapshots?limit=${limit}&offset=${offset}&resolve_memory_counts=false`);
       const rec = this.asRecord(data);
       if (!Array.isArray(rec?.snapshots)) {
         // Preserve older unpaginated response formats on the first request.
