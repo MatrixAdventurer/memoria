@@ -2,14 +2,21 @@
  * Cursor pagination for GET /v1/memories (issue #267).
  * The API caps each page at 500 rows and returns next_cursor when more exist.
  */
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoriaClient } from "../client.js";
 import { buildApiConfig, mockFetch } from "./helpers.js";
 
 const originalFetch = globalThis.fetch;
+const servers: Server[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   globalThis.fetch = originalFetch;
+  for (const server of servers.splice(0)) {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 const SERVER_PAGE_MAX = 500;
@@ -63,6 +70,50 @@ function serveMemories(f: ReturnType<typeof mockFetch>, total: number) {
 }
 
 describe("listMemories cursor pagination", () => {
+  it.each([
+    { limit: 1, pages: 1, ids: [2], partial: true },
+    { limit: 3, pages: 2, ids: [2, 3, 4], partial: false },
+  ])("filters by type before applying the API page budget: $limit rows", async ({ limit, pages, ids, partial }) => {
+    const requests: URL[] = [];
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      memory_id: memoryId(i), content: `m${i}`,
+      memory_type: i < 2 ? "semantic" : "episodic",
+    }));
+    const server = createServer((request, response) => {
+      const url = new URL(request.url!, "http://localhost");
+      requests.push(url);
+      const type = url.searchParams.get("memory_type");
+      const selected = type ? rows.filter((row) => row.memory_type === type) : rows;
+      const cursor = url.searchParams.get("cursor");
+      const start = cursor ? selected.findIndex((row) => row.memory_id === cursor) + 1 : 0;
+      const size = Math.min(2, Number(url.searchParams.get("limit")));
+      const items = selected.slice(start, start + size);
+      const more = start + items.length < selected.length;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ items, next_cursor: more ? items.at(-1)!.memory_id : null }));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const client = new MemoriaClient(buildApiConfig({
+      apiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      maxListPages: pages,
+    }));
+    try {
+      const result = await client.listMemories({ userId: "u", limit, memoryType: "episodic" });
+      expect(result.items.map((row) => row.memory_id)).toEqual(ids.map(memoryId));
+      expect(result.count).toBe(ids.length);
+      expect(result.partial).toBe(partial);
+      expect(result.limitations).toBeUndefined();
+      expect(requests).toHaveLength(pages);
+      expect(requests.every((url) => url.searchParams.get("memory_type") === "episodic")).toBe(true);
+      expect(requests.map((url) => Number(url.searchParams.get("limit")))).toEqual(
+        pages === 1 ? [1] : [3, 1],
+      );
+    } finally {
+      client.close();
+    }
+  });
+
   it("issue #267 repro: a truncated page with next_cursor is never reported complete", async () => {
     const f = mockFetch();
     const client = new MemoriaClient(buildApiConfig({ maxListPages: 1 }));
