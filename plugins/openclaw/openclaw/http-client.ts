@@ -155,13 +155,15 @@ export class MemoriaHttpTransport {
   private async list(args: Record<string, unknown>) {
     const limit = typeof args.limit === "number" ? args.limit : 100;
     const items: unknown[] = [];
+    const typeFilter = typeof args.memory_type === "string"
+      ? `&memory_type=${encodeURIComponent(args.memory_type)}` : "";
     let cursor: string | null = null;
     for (let page = 0; page < this.maxListPages && items.length < limit; page++) {
       const pageSize = Math.min(limit - items.length, API_LIST_PAGE_MAX);
       const query = cursor
         ? `limit=${pageSize}&cursor=${encodeURIComponent(cursor)}`
         : `limit=${pageSize}`;
-      const data = await this.get(`/v1/memories?${query}`);
+      const data = await this.get(`/v1/memories?${query}${typeFilter}`);
       const rec = this.asRecord(data);
       const pageItems = Array.isArray(rec?.items) ? rec!.items : Array.isArray(data) ? data : [];
       const next = typeof rec?.next_cursor === "string" && rec.next_cursor ? rec.next_cursor : null;

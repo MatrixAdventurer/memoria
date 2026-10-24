@@ -441,7 +441,7 @@ export class MemoriaClient {
     sessionId?: string;
     includeInactive?: boolean;
   }): Promise<MemoriaListMemoriesResponse> {
-    const needsClientFiltering = Boolean(params.memoryType);
+    const needsClientFiltering = Boolean(params.memoryType) && this.config.backend !== "api";
     const scanLimit = needsClientFiltering
       ? Math.min(2000, Math.max(params.limit, params.limit * this.config.maxListPages))
       : params.limit;
@@ -449,6 +449,7 @@ export class MemoriaClient {
     const generation = this.currentGeneration(params.userId);
     const text = await this.callToolText(params.userId, "memory_list", {
       limit: scanLimit,
+      ...(this.config.backend === "api" && params.memoryType ? { memory_type: params.memoryType } : {}),
     });
     let items = parseMemoryTextList(text);
     const hasMore = parseListHasMore(text) ?? items.length >= scanLimit;
@@ -457,7 +458,9 @@ export class MemoriaClient {
     const limitations: string[] = [];
     if (params.memoryType) {
       items = items.filter((memory) => memory.memory_type === params.memoryType);
-      limitations.push("memoryType filtering is applied client-side from a bounded Rust MCP scan.");
+      if (needsClientFiltering) {
+        limitations.push("memoryType filtering is applied client-side from a bounded Rust MCP scan.");
+      }
     }
     if (params.sessionId) {
       limitations.push("Rust Memoria MCP does not expose session_id on memory_list; sessionId was ignored.");
