@@ -81,6 +81,24 @@ async def test_list_happy_path(httpx_mock: HTTPXMock, client: AsyncMemoriaClient
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, True, "10"])
+async def test_list_rejects_invalid_limit(
+    client: AsyncMemoriaClient, limit: object
+) -> None:
+    with pytest.raises(MemoriaValidationError, match="limit"):
+        await client.memories.list(limit=limit)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cursor", ["abc123", "g" * 32, 123])
+async def test_list_rejects_invalid_cursor(
+    client: AsyncMemoriaClient, cursor: object
+) -> None:
+    with pytest.raises(MemoriaValidationError, match="cursor"):
+        await client.memories.list(cursor=cursor)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
 async def test_structured_query(httpx_mock: HTTPXMock, client: AsyncMemoriaClient) -> None:
     response = {**MEMORY_STUB, "extra_metadata": {"scene": "incident"}}
     httpx_mock.add_response(json={"items": [response], "next_cursor": None})
