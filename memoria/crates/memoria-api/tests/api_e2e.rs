@@ -6473,6 +6473,138 @@ async fn test_api_snapshot_limit_is_per_user() {
 }
 
 #[tokio::test]
+async fn test_snapshot_bulk_delete_rejects_blank_prefix() {
+    let (base, client, _server) = spawn_server().await;
+    let user = uid();
+    let names = [
+        format!(
+            "blank_a_{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
+        ),
+        format!(
+            "blank_b_{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
+        ),
+    ];
+    let outcome: anyhow::Result<()> = async {
+        for name in &names {
+            let response = client
+                .post(format!("{base}/v1/snapshots"))
+                .header("X-User-Id", &user)
+                .json(&json!({"name": name}))
+                .send()
+                .await?;
+            anyhow::ensure!(
+                response.status() == 201,
+                "create failed: {}",
+                response.status()
+            );
+        }
+        for prefix in ["", "  "] {
+            let response = client
+                .post(format!("{base}/v1/snapshots/delete"))
+                .header("X-User-Id", &user)
+                .json(&json!({"prefix": prefix}))
+                .send()
+                .await?;
+            anyhow::ensure!(
+                response.status() == 400,
+                "unexpected status: {}",
+                response.status()
+            );
+            anyhow::ensure!(response
+                .text()
+                .await?
+                .contains("Snapshot prefix must not be blank"));
+            let listing: Value = client
+                .get(format!("{base}/v1/snapshots"))
+                .header("X-User-Id", &user)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            for name in &names {
+                anyhow::ensure!(
+                    listing["snapshots"]
+                        .as_array()
+                        .is_some_and(|snaps| snaps.iter().any(|snap| snap["name"] == *name)),
+                    "missing {name}: {listing}"
+                );
+            }
+        }
+        let remote = memoria_mcp::remote::RemoteClient::new(&base, None, user.clone(), None);
+        let result = remote
+            .call("memory_snapshot_delete", json!({"prefix": ""}))
+            .await;
+        let error = match result {
+            Err(error) => error.to_string(),
+            Ok(value) => anyhow::bail!("remote MCP accepted blank prefix: {value}"),
+        };
+        anyhow::ensure!(
+            error.contains("400") && error.contains("Snapshot prefix must not be blank"),
+            "unexpected remote error: {error}"
+        );
+        let listing: Value = client
+            .get(format!("{base}/v1/snapshots"))
+            .header("X-User-Id", &user)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        for name in &names {
+            anyhow::ensure!(
+                listing["snapshots"]
+                    .as_array()
+                    .is_some_and(|snaps| snaps.iter().any(|snap| snap["name"] == *name)),
+                "missing {name} after remote request: {listing}"
+            );
+        }
+        Ok(())
+    }
+    .await;
+    let cleanup: anyhow::Result<()> = async {
+        for name in &names {
+            let response = client
+                .delete(format!("{base}/v1/snapshots/{name}"))
+                .header("X-User-Id", &user)
+                .send()
+                .await?;
+            anyhow::ensure!(
+                response.status() == 204,
+                "cleanup failed: {}",
+                response.status()
+            );
+        }
+        let listing: Value = client
+            .get(format!("{base}/v1/snapshots"))
+            .header("X-User-Id", &user)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let snapshots = listing["snapshots"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("cleanup listing lacks snapshots array: {listing}"))?;
+        for name in &names {
+            anyhow::ensure!(
+                !snapshots.iter().any(|snap| snap["name"] == *name),
+                "cleanup left {name}"
+            );
+        }
+        Ok(())
+    }
+    .await;
+    assert!(
+        cleanup.is_ok(),
+        "cleanup failed: {cleanup:?}; test: {outcome:?}"
+    );
+    outcome.unwrap();
+}
+
+#[tokio::test]
 async fn test_api_snapshot_detail_is_scoped_to_owner() {
     let (base, client, _server) = spawn_server().await;
     let uid_a = uid();
