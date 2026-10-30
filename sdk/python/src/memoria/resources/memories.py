@@ -429,7 +429,9 @@ class MemoriesResource:
                 "limit": limit,
             }
         )
-        data = self._client._request("POST", "/v1/memories/fulltext-search", json=body)
+        data = self._client._request(
+            "POST", "/v1/memories/fulltext-search", json=body, idempotent=True
+        )
         return RetrieveResult.from_dict(data)
 
     def list(
@@ -491,7 +493,9 @@ class MemoriesResource:
                 "cursor": cursor,
             }
         )
-        data = self._client._request("POST", "/v1/memories/query", json=body)
+        data = self._client._request(
+            "POST", "/v1/memories/query", json=body, idempotent=True
+        )
         return MemoryPage.from_dict(data)
 
     def correct(
@@ -727,7 +731,7 @@ class AsyncMemoriesResource:
             }
         )
         data = await self._client._arequest(
-            "POST", "/v1/memories/fulltext-search", json=body
+            "POST", "/v1/memories/fulltext-search", json=body, idempotent=True
         )
         return RetrieveResult.from_dict(data)
 
@@ -790,7 +794,9 @@ class AsyncMemoriesResource:
                 "cursor": cursor,
             }
         )
-        data = await self._client._arequest("POST", "/v1/memories/query", json=body)
+        data = await self._client._arequest(
+            "POST", "/v1/memories/query", json=body, idempotent=True
+        )
         return MemoryPage.from_dict(data)
 
     async def correct(
