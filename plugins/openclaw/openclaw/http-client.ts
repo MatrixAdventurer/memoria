@@ -465,7 +465,10 @@ export class MemoriaHttpTransport {
         ? rec!.results
         : Array.isArray(rec?.items)
           ? rec!.items
-          : [];
+          : null;
+    if (items === null) {
+      throw new Error("Memoria API returned invalid memory results response");
+    }
     return this.formatMemoryItems(items);
   }
 
