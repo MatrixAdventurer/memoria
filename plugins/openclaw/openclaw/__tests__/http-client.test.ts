@@ -221,10 +221,18 @@ describe("Group 3: Cloud API Communication", () => {
     it.each(["memory_retrieve", "memory_search"])(
       "3.36a %s rejects malformed successful response bodies",
       async (tool) => {
-        for (const invalid of [null, {}, { error: "upstream unavailable" }, { results: null }, { results: {} }, "unexpected"]) {
+        for (const invalid of [
+          null,
+          {},
+          { error: "upstream unavailable" },
+          { results: null },
+          { results: {} },
+          "unexpected",
+        ]) {
           fetchMock.respondWith(200, invalid);
-          await expect(transport.callTool(tool, { query: "test" }))
-            .rejects.toThrow(/invalid memory results response/i);
+          await expect(transport.callTool(tool, { query: "test" })).rejects.toThrow(
+            /invalid memory results response/i,
+          );
         }
       },
     );
@@ -232,11 +240,18 @@ describe("Group 3: Cloud API Communication", () => {
     it.each(["memory_retrieve", "memory_search"])(
       "3.36b %s preserves valid empty and populated response shapes",
       async (tool) => {
-        for (const valid of [[], [{ memory_id: "m1" }], { results: [] }, { results: [{ memory_id: "m2" }] }, { items: [] }, { items: [{ memory_id: "m3" }] }]) {
-          fetchMock.respondWith(200, valid);
+        const cases: Array<{ response: unknown; expected: unknown[] }> = [
+          { response: [], expected: [] },
+          { response: [{ memory_id: "m1" }], expected: [{ memory_id: "m1" }] },
+          { response: { results: [] }, expected: [] },
+          { response: { results: [{ memory_id: "m2" }] }, expected: [{ memory_id: "m2" }] },
+          { response: { items: [] }, expected: [] },
+          { response: { items: [{ memory_id: "m3" }] }, expected: [{ memory_id: "m3" }] },
+        ];
+        for (const { response, expected } of cases) {
+          fetchMock.respondWith(200, response);
           const result = await transport.callTool(tool, { query: "test" }) as any;
-          const records = Array.isArray(valid) ? valid : ("results" in valid ? valid.results : valid.items);
-          expect(JSON.parse(result.content[0].text)).toEqual(records);
+          expect(JSON.parse(result.content[0].text)).toEqual(expected);
         }
       },
     );
